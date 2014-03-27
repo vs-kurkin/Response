@@ -1,7 +1,6 @@
 'use strict';
 /**
  * @fileOverview Response.
- * @author Vladislav Kurkin <b-vladi@yandex-team.ru>
  */
 
 var EventEmitter = require('EventEmitter');
