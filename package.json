@@ -1,0 +1,22 @@
+{
+    "name": "Response",
+    "author": "Vladislav Kurkin <b-vladi@cs-console.ru> (https://github.com/B-Vladi)",
+    "version": "0.0.1",
+    "main": "Response.js",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/B-Vladi/Response"
+    },
+    "engines": {
+        "node": "*"
+    },
+    "dependencies": {
+        "EventEmitter": "B-Vladi/EventEmitter",
+        "utils": "B-Vladi/utils"
+    },
+    "bugs": {
+        "email": "b-vladi@cs-console.ru",
+        "url": "https://github.com/B-Vladi/Response/issues"
+    }
+}
