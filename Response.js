@@ -101,7 +101,15 @@ Response.reject = function (reason) {
  * @returns {Queue}
  */
 Response.queue = function () {
-    return new Queue(slice.call(arguments, 0));
+    var index = 0;
+    var length = arguments.length;
+    var args = new Array(arguments.length);
+
+    while (index < length) {
+        args[index] = arguments[index++];
+    }
+
+    return new Queue(args);
 };
 
 /**
@@ -110,7 +118,7 @@ Response.queue = function () {
  * @returns {Queue}
  */
 Response.strictQueue = function () {
-    return new Queue(slice.call(arguments, 0)).strict();
+    return this.queue.apply(this, arguments).strict();
 };
 
 /**
@@ -125,7 +133,7 @@ Response.strictQueue = function () {
 Response.fCall = function (method, args) {
     var response = new this();
 
-    return response.run.apply(response, slice.call(arguments, 1));
+    return response.run.apply(response, arguments);
 };
 
 /**
@@ -135,12 +143,12 @@ Response.fCall = function (method, args) {
  * @returns {Response}
  */
 Response.fApply = function (method, args) {
-    args = utils.toArray(args);
-    args.unshift(method);
-
     var response = new this();
+    var arg = utils.toArray(args);
 
-    return response.run.apply(response, args);
+    arg.unshift(method);
+
+    return response.run.apply(response, arg);
 };
 
 utils.inherits(Response, EventEmitter);
@@ -237,7 +245,7 @@ Response.prototype.on = function (type, listener, context) {
     context = event.context || this.context || this;
 
     switch (state) {
-        case Response.STATE_RESOLVED:
+        case 1:
             if (type === this.EVENT_RESOLVE) {
                 EventEmitter.event = event;
 
@@ -252,7 +260,7 @@ Response.prototype.on = function (type, listener, context) {
             }
             break;
 
-        case Response.STATE_REJECTED:
+        case 2:
             if (type === this.EVENT_REJECT) {
                 EventEmitter.event = event;
 
@@ -281,7 +289,7 @@ Response.prototype.emit = function (type, args) {
     try {
         return EventEmitter.prototype.emit.apply(this, arguments);
     } catch (error) {
-        if (this.state === Response.STATE_REJECTED) {
+        if (this.state === 2) {
             this.reason = utils.toError(error);
         } else {
             this.reject(error);
@@ -313,7 +321,7 @@ Response.prototype.pending = function () {
  * @returns {Response}
  */
 Response.prototype.ready = function () {
-    if (this.state === Response.STATE_PENDING) {
+    if (this.state === 0) {
         this.emit(this.EVENT_READY);
     }
 
@@ -326,7 +334,7 @@ Response.prototype.ready = function () {
  * @returns {Response}
  */
 Response.prototype.progress = function (progress) {
-    if (this.state === Response.STATE_PENDING) {
+    if (this.state === 0) {
         this.emit(this.EVENT_PROGRESS, progress);
     }
 
@@ -343,14 +351,14 @@ Response.prototype.resolve = function (results) {
     var index = 0;
     var args;
 
-    this.state = Response.STATE_RESOLVED;
+    this.state = 1;
     this.reason = null;
     this.isResolved = true;
 
-    if (state === Response.STATE_REJECTED) {
+    if (state === 2) {
         EventEmitter.stop(this);
 
-        state = Response.STATE_PENDING;
+        state = 0;
     }
 
     args = new Array(argsLength);
@@ -364,9 +372,8 @@ Response.prototype.resolve = function (results) {
         this.result = args;
     }
 
-    if (state === Response.STATE_PENDING) {
-        this.emit.apply(this, [this.EVENT_RESOLVE].concat(args));
-        /*switch (argsLength) {
+    if (state === 0) {
+        switch (argsLength) {
             case 0:
                 this.emit(this.EVENT_RESOLVE);
                 break;
@@ -388,7 +395,8 @@ Response.prototype.resolve = function (results) {
                     args[index + 1] = arguments[index++];
                 }
 
-        }*/
+                this.emit.apply(this, [this.EVENT_RESOLVE].concat(args));
+        }
     }
 
     return this;
@@ -402,7 +410,7 @@ Response.prototype.resolve = function (results) {
 Response.prototype.reject = function (reason) {
     var state = this.state;
 
-    this.state = Response.STATE_REJECTED;
+    this.state = 2;
     this.isResolved = false;
 
     if (arguments.length && reason != null) {
@@ -415,13 +423,13 @@ Response.prototype.reject = function (reason) {
         this.result = [];
     }
 
-    if (state === Response.STATE_RESOLVED) {
+    if (state === 1) {
         EventEmitter.stop(this);
 
-        state = Response.STATE_PENDING;
+        state = 0;
     }
 
-    if (state === Response.STATE_PENDING) {
+    if (state === 0) {
         this.emit(this.EVENT_REJECT, this.reason);
     }
 
@@ -564,6 +572,9 @@ Response.prototype.wrap = function (wrapped, callback) {
  */
 Response.prototype.run = function (method, args) {
     var wrapped = this.wrapped;
+    var arg;
+    var index = 0;
+    var length;
 
     if (utils.isString(method)) {
         if (wrapped == null) {
@@ -580,8 +591,17 @@ Response.prototype.run = function (method, args) {
             this.setCallback();
         }
 
+        length = arguments.length;
+        arg = new Array(length);
+
+        while (index < length) {
+            arg[index] = arguments[++index];
+        }
+
+        arg[index] = this.callback;
+
         try {
-            method.apply(wrapped, slice.call(arguments, 1).concat([this.callback]));
+            method.apply(wrapped, arg);
         } catch (error) {
             this.reject(error);
         }
@@ -882,7 +902,7 @@ Queue.prototype.start = function () {
 
     if (stack.length === 0) {
         if (this.stopped === false) {
-            this.resolve();
+            this.resolve.apply(this, utils.toArray(this.result));
         }
 
         return this;
@@ -892,12 +912,13 @@ Queue.prototype.start = function () {
 
     item = stack.shift();
 
-    if (this.state === Response.STATE_PENDING) {
+    if (this.state === 0) {
         if (utils.isFunction(item)) {
             try {
                 item = item.apply(this, utils.toArray(this.item && this.item.result));
             } catch (error) {
-                return this.reject(error);
+                this.reject(error);
+                return this;
             }
 
             if (this.stopped === true) {
@@ -1044,8 +1065,7 @@ function onResultItem(data) {
             break;
 
         case 1:
-            this.emit(this.EVENT_RESOLVE_ITEM);
-            /*argsLength = arguments.length;
+            argsLength = arguments.length;
 
             switch (argsLength) {
                 case 0:
@@ -1070,7 +1090,7 @@ function onResultItem(data) {
                     }
 
                     this.emit.apply(this, args);
-            }*/
+            }
             break;
         case 2:
             this.emit(this.EVENT_REJECT_ITEM, data);
@@ -1079,7 +1099,7 @@ function onResultItem(data) {
 
     if (this.stopped === false) {
         if (this.stack.length === 0) {
-            this.resolve();
+            this.resolve.apply(this, utils.toArray(this.result));
         } else {
             this.start();
         }
