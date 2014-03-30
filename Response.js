@@ -6,7 +6,6 @@
 var EventEmitter = require('EventEmitter');
 var Event = EventEmitter.Event;
 var utils = require('utils.js');
-var slice = Array.prototype.slice;
 var push = Array.prototype.push;
 
 /**
@@ -103,7 +102,7 @@ Response.reject = function (reason) {
 Response.queue = function () {
     var index = 0;
     var length = arguments.length;
-    var args = new Array(arguments.length);
+    var args = new Array(length);
 
     while (index < length) {
         args[index] = arguments[index++];
@@ -248,9 +247,25 @@ Response.prototype.on = function (type, listener, context) {
         case 1:
             if (type === this.EVENT_RESOLVE) {
                 EventEmitter.event = event;
+                this.result = utils.toArray(this.result);
 
                 try {
-                    listener.apply(context, utils.toArray(this.result));
+                    switch (this.result.length) {
+                        case 0:
+                            listener.call(context);
+                            break;
+                        case 1:
+                            listener.call(context, this.result[0]);
+                            break;
+                        case 2:
+                            listener.call(context, this.result[0], this.result[1]);
+                            break;
+                        case 3:
+                            listener.call(context, this.result[0], this.result[1], this.result[2]);
+                            break;
+                        default:
+                            listener.apply(context, this.result);
+                    }
                 } catch (error) {
                     this.reject(error);
                 }
@@ -347,7 +362,7 @@ Response.prototype.progress = function (progress) {
  */
 Response.prototype.resolve = function (results) {
     var state = this.state;
-    var argsLength = arguments.length;
+    var length = arguments.length;
     var index = 0;
     var args;
 
@@ -361,41 +376,34 @@ Response.prototype.resolve = function (results) {
         state = 0;
     }
 
-    args = new Array(argsLength);
-
-    while (index < argsLength) {
-        args[index] = arguments[index];
-        index++;
-    }
-
-    if (argsLength) {
-        this.result = args;
-    }
-
     if (state === 0) {
-        switch (argsLength) {
+        switch (length) {
             case 0:
                 this.emit(this.EVENT_RESOLVE);
                 break;
             case 1:
-                this.emit(this.EVENT_RESOLVE, arguments[0]);
+                this.result = [results];
+                this.emit(this.EVENT_RESOLVE, results);
                 break;
             case 2:
-                this.emit(this.EVENT_RESOLVE, arguments[0], arguments[1]);
+                this.result = [results, arguments[1]];
+                this.emit(this.EVENT_RESOLVE, results, arguments[1]);
                 break;
             case 3:
-                this.emit(this.EVENT_RESOLVE, arguments[0], arguments[1], arguments[2]);
+                this.result = [results, arguments[1], arguments[2]];
+                this.emit(this.EVENT_RESOLVE, results, arguments[1], arguments[2]);
                 break;
             default:
-                args = new Array(argsLength + 1);
+                args = new Array(length + 1);
                 index = 0;
                 args[index] = this.EVENT_RESOLVE;
 
-                while (index < argsLength) {
+                while (index < length) {
                     args[index + 1] = arguments[index++];
                 }
 
-                this.emit.apply(this, [this.EVENT_RESOLVE].concat(args));
+                this.result = args.slice(1);
+                this.emit.apply(this, args);
         }
     }
 
@@ -536,9 +544,35 @@ Response.prototype.map = function (keys) {
  * @param {Error|null} [error]
  * @param {...*} [results]
  */
-Response.prototype.callback = function responseCallback (error, results) {
+Response.prototype.callback = function responseCallback(error, results) {
+    var index = 0;
+    var length = arguments.length - 1;
+    var args;
+
     if (error == null) {
-        self.resolve.apply(self, slice.call(arguments, 1));
+        switch (length) {
+            case -1:
+            case 0:
+                self.resolve();
+                break;
+            case 1:
+                self.resolve(results);
+                break;
+            case 2:
+                self.resolve(results, arguments[2]);
+                break;
+            case 3:
+                self.resolve(results, arguments[2], arguments[3]);
+                break;
+            default:
+                args = new Array(length);
+
+                while (index < length) {
+                    args[index] = arguments[++index];
+                }
+
+                self.resolve.apply(self, args);
+        }
     } else {
         self.reject(error);
     }
@@ -592,18 +626,50 @@ Response.prototype.run = function (method, args) {
         }
 
         length = arguments.length;
-        arg = new Array(length);
 
-        while (index < length) {
-            arg[index] = arguments[++index];
-        }
+        switch (length) {
+            case 1:
+                try {
+                    method.call(wrapped, this.callback);
+                } catch (error) {
+                    this.reject(error);
+                }
+                break;
+            case 2:
+                try {
+                    method.call(wrapped, args, this.callback);
+                } catch (error) {
+                    this.reject(error);
+                }
+                break;
+            case 3:
+                try {
+                    method.call(wrapped, args, arguments[2], this.callback);
+                } catch (error) {
+                    this.reject(error);
+                }
+                break;
+            case 4:
+                try {
+                    method.call(wrapped, args, arguments[2], arguments[3], this.callback);
+                } catch (error) {
+                    this.reject(error);
+                }
+                break;
+            default:
+                arg = new Array(length);
 
-        arg[index] = this.callback;
+                while (index < length) {
+                    arg[index] = arguments[++index];
+                }
 
-        try {
-            method.apply(wrapped, arg);
-        } catch (error) {
-            this.reject(error);
+                arg[index] = this.callback;
+
+                try {
+                    method.apply(wrapped, arg);
+                } catch (error) {
+                    this.reject(error);
+                }
         }
     } else {
         throw new Error('method is not a function');
@@ -959,8 +1025,12 @@ Queue.prototype.start = function () {
  */
 Queue.prototype.stop = function () {
     this.item = null;
-    this.stopped = true;
-    this.emit(this.EVENT_STOP);
+
+    if (this.stopped === false) {
+        this.stopped = true;
+        this.emit(this.EVENT_STOP);
+    }
+
     return this;
 };
 
@@ -980,7 +1050,6 @@ Queue.prototype.push = function () {
 Queue.prototype.clear = function () {
     this.stack.length = 0;
     this.item = null;
-    this.stop();
 
     Response.prototype.clear.call(this);
 
