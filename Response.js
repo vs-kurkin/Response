@@ -5,7 +5,7 @@
 
 var EventEmitter = require('EventEmitter');
 var Event = EventEmitter.Event;
-var utils = require('utils.js');
+var utils = require('utils');
 var push = Array.prototype.push;
 
 /**
@@ -1050,10 +1050,33 @@ Queue.prototype.push = function () {
  * @returns {Queue}
  */
 Queue.prototype.clear = function () {
-    this.stack.length = 0;
-    this.item = null;
+    var result = this.result = utils.toArray(this.result);
+    var length = result.length;
+    var index = 0;
+    var response;
+    var prototype = this.constructor.prototype;
 
-    Response.prototype.clear.call(this);
+    while (index < length) {
+        response = result[index++];
+
+        if (Response.isResponse(response)) {
+            response.clear();
+        }
+    }
+
+    result.length = 0;
+
+    this.removeAllListeners();
+    this.stack.length = 0;
+    this.item = prototype.item;
+    this.state = prototype.state;
+    this.context = prototype.context;
+    this.reason = prototype.reason;
+    this.isResolved = prototype.isResolved;
+    this.data = prototype.data;
+    this.keys = prototype.keys;
+    this.wrapped = prototype.wrapped;
+    this.callback = null;
 
     return this;
 };
