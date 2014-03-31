@@ -81,7 +81,13 @@ Response.create = function (context, data) {
  * @returns {Response}
  */
 Response.resolve = function (results) {
-    return this.prototype.resolve.apply(new this(), arguments);
+    var response = new this();
+
+    response.state = 1;
+    response.result = utils.toArray(arguments);
+    response.isResolved = true;
+
+    return response;
 };
 
 /**
@@ -91,7 +97,12 @@ Response.resolve = function (results) {
  * @returns {Response}
  */
 Response.reject = function (reason) {
-    return new this().reject(reason);
+    var response = new this();
+
+    response.state = 2;
+    response.reason = utils.toError(reason);
+
+    return response;
 };
 
 /**
@@ -100,15 +111,7 @@ Response.reject = function (reason) {
  * @returns {Queue}
  */
 Response.queue = function () {
-    var index = 0;
-    var length = arguments.length;
-    var args = new Array(length);
-
-    while (index < length) {
-        args[index] = arguments[index++];
-    }
-
-    return new Queue(args);
+    return new Queue(arguments);
 };
 
 /**
@@ -117,7 +120,7 @@ Response.queue = function () {
  * @returns {Queue}
  */
 Response.strictQueue = function () {
-    return this.queue.apply(this, arguments).strict();
+    return new Queue(arguments).strict();
 };
 
 /**
@@ -231,6 +234,7 @@ Response.prototype.on = function (type, listener, context) {
     var state = this.state;
     var currentEvent = EventEmitter.event;
     var event;
+    var result;
 
     if (type instanceof Event) {
         event = type;
@@ -247,24 +251,24 @@ Response.prototype.on = function (type, listener, context) {
         case 1:
             if (type === this.EVENT_RESOLVE) {
                 EventEmitter.event = event;
-                this.result = utils.toArray(this.result);
+                result = this.result = utils.toArray(this.result);
 
                 try {
-                    switch (this.result.length) {
+                    switch (result.length) {
                         case 0:
                             listener.call(context);
                             break;
                         case 1:
-                            listener.call(context, this.result[0]);
+                            listener.call(context, result[0]);
                             break;
                         case 2:
-                            listener.call(context, this.result[0], this.result[1]);
+                            listener.call(context, result[0], result[1]);
                             break;
                         case 3:
-                            listener.call(context, this.result[0], this.result[1], this.result[2]);
+                            listener.call(context, result[0], result[1], result[2]);
                             break;
                         default:
-                            listener.apply(context, this.result);
+                            listener.apply(context, result);
                     }
                 } catch (error) {
                     this.reject(error);
@@ -612,7 +616,7 @@ Response.prototype.run = function (method, args) {
 
     if (utils.isString(method)) {
         if (wrapped == null) {
-            throw new Error('wrapped is not defined');
+            throw new Error('Wrapped object is not defined. Use the Response#wrap method.');
         }
 
         method = wrapped[method];
@@ -621,61 +625,53 @@ Response.prototype.run = function (method, args) {
     if (utils.isFunction(method)) {
         this.pending();
 
-        if (this.callback == null) {
+        if (!utils.isFunction(this.callback)) {
             this.setCallback();
         }
 
         length = arguments.length;
 
-        switch (length) {
-            case 1:
-                try {
+        try {
+            switch (length) {
+                case 1:
                     method.call(wrapped, this.callback);
-                } catch (error) {
-                    this.reject(error);
-                }
-                break;
-            case 2:
-                try {
+                    return this;
+                    break;
+                case 2:
                     method.call(wrapped, args, this.callback);
-                } catch (error) {
-                    this.reject(error);
-                }
-                break;
-            case 3:
-                try {
+                    return this;
+                    break;
+                case 3:
                     method.call(wrapped, args, arguments[2], this.callback);
-                } catch (error) {
-                    this.reject(error);
-                }
-                break;
-            case 4:
-                try {
+                    return this;
+                    break;
+                case 4:
                     method.call(wrapped, args, arguments[2], arguments[3], this.callback);
-                } catch (error) {
-                    this.reject(error);
-                }
-                break;
-            default:
-                arg = new Array(length);
-
-                while (index < length) {
-                    arg[index] = arguments[++index];
-                }
-
-                arg[index] = this.callback;
-
-                try {
-                    method.apply(wrapped, arg);
-                } catch (error) {
-                    this.reject(error);
-                }
+                    return this;
+                    break;
+            }
+        } catch (error) {
+            return this.reject(error);
         }
+
+        arg = new Array(length);
+
+        while (index < length) {
+            arg[index] = arguments[++index];
+        }
+
+        arg[index] = this.callback;
+
+        try {
+            method.apply(wrapped, arg);
+        } catch (error) {
+            this.reject(error);
+        }
+
+        return this;
     } else {
         throw new Error('method is not a function');
     }
-
-    return this;
 };
 
 /**
@@ -751,7 +747,7 @@ Response.prototype.setKeys = function (keys) {
  * });
  *
  * // Using a custom callback
- * var r = new Response().setCallback(function (data, textStatus, jqXHR) {
+ * r = new Response().setCallback(function (data, textStatus, jqXHR) {
  *   if (!data || data.error) {
  *      self.reject(data.error);
  *   } else {
@@ -778,6 +774,12 @@ Response.prototype.setCallback = function (callback) {
 };
 
 /**
+ * @example
+ * var Response = require('Response');
+ * var fs = require('fs');
+ * var r = new Response();
+ *
+ * fs.open('/file.txt', 'r', r.getCallback());
  *
  * @returns {Function}
  */
