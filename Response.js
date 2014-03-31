@@ -496,7 +496,7 @@ Response.prototype.map = function (keys) {
     keys = utils.toArray(keys, this.keys);
 
     var hasKeys = utils.isArray(keys);
-    var hasCallback = callback !== null;
+    var hasCallback = !utils.isNull(callback);
 
     var result = hasKeys ? {} : [];
     var args = [];
@@ -553,7 +553,7 @@ Response.prototype.callback = function responseCallback(error, results) {
     var length = arguments.length - 1;
     var args;
 
-    if (error == null) {
+    if (utils.isUndefinedOrNull(error)) {
         switch (length) {
             case -1:
             case 0:
@@ -589,11 +589,11 @@ Response.prototype.callback = function responseCallback(error, results) {
  * @returns {Response}
  */
 Response.prototype.wrap = function (wrapped, callback) {
-    if (wrapped == null) {
+    if (utils.isUndefinedOrNull(wrapped)) {
         throw new Error('wrapped is not defined');
     }
 
-    if (this.callback == null || utils.isFunction(callback)) {
+    if (utils.isUndefinedOrNull(this.callback) || utils.isFunction(callback)) {
         this.setCallback(callback);
     }
 
@@ -615,7 +615,7 @@ Response.prototype.run = function (method, args) {
     var length;
 
     if (utils.isString(method)) {
-        if (wrapped == null) {
+        if (utils.isUndefinedOrNull(wrapped)) {
             throw new Error('Wrapped object is not defined. Use the Response#wrap method.');
         }
 
@@ -680,7 +680,7 @@ Response.prototype.run = function (method, args) {
  * @returns {Response}
  */
 Response.prototype.setContext = function (context) {
-    if (context === null || utils.isObject(context)) {
+    if (utils.isNull(context) || utils.isObject(context)) {
         this.context = context;
     }
 
