@@ -21,11 +21,11 @@ function Response(context, data) {
     EventEmitter.call(this);
 
     this.state = this.state;
-    this.context = utils.toObject(context, this.context);
+    this.context = context instanceof Object ? context : this.context;
     this.result = [];
     this.reason = this.reason;
     this.isResolved = this.isResolved;
-    this.data = utils.toSomething(data, this.data);
+    this.data = arguments.length === 2 ? data : this.data;
     this.keys = this.keys;
     this.wrapped = this.wrapped;
     this.callback = null;
@@ -300,22 +300,33 @@ Response.prototype.on = function (type, listener, context) {
     return this;
 };
 
+Response.prototype.once = function (type, listener, context) {
+    return this.on(type instanceof Event ? type : new Event(type, listener, context, true));
+};
+
 /**
  * @param {string} type Тип события.
  * @param {...*} [args] Аргументы, передаваемые в обработчик события.
  */
 Response.prototype.emit = function (type, args) {
+    var reason;
+    var result = false;
+
     try {
-        return EventEmitter.prototype.emit.apply(this, arguments);
+        result = EventEmitter.prototype.emit.apply(this, arguments);
     } catch (error) {
+        reason = error;
+    }
+
+    if (reason) {
         if (this.state === 2) {
-            this.reason = utils.toError(error);
+            this.reason = utils.toError(reason);
         } else {
-            this.reject(error);
+            this.reject(reason);
         }
     }
 
-    return false;
+    return result;
 };
 
 /**
@@ -553,7 +564,7 @@ Response.prototype.callback = function responseCallback(error, results) {
     var length = arguments.length - 1;
     var args;
 
-    if (utils.isUndefinedOrNull(error)) {
+    if (error == null) {
         switch (length) {
             case -1:
             case 0:
@@ -589,11 +600,11 @@ Response.prototype.callback = function responseCallback(error, results) {
  * @returns {Response}
  */
 Response.prototype.wrap = function (wrapped, callback) {
-    if (utils.isUndefinedOrNull(wrapped)) {
+    if (wrapped == null) {
         throw new Error('wrapped is not defined');
     }
 
-    if (utils.isUndefinedOrNull(this.callback) || utils.isFunction(callback)) {
+    if (this.callback == null || utils.isFunction(callback)) {
         this.setCallback(callback);
     }
 
@@ -615,7 +626,7 @@ Response.prototype.run = function (method, args) {
     var length;
 
     if (utils.isString(method)) {
-        if (utils.isUndefinedOrNull(wrapped)) {
+        if (wrapped == null) {
             throw new Error('Wrapped object is not defined. Use the Response#wrap method.');
         }
 
