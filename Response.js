@@ -7,6 +7,7 @@ var EventEmitter = require('EventEmitter');
 var Event = EventEmitter.Event;
 var utils = require('utils');
 var push = Array.prototype.push;
+var toString = Object.prototype.toString;
 
 /**
  *
@@ -21,7 +22,7 @@ function Response(context, data) {
     EventEmitter.call(this);
 
     this.state = this.state;
-    this.context = context instanceof Object ? context : this.context;
+    this.context = typeof context === 'object' ? context : this.context;
     this.result = [];
     this.reason = this.reason;
     this.isResolved = this.isResolved;
@@ -72,7 +73,8 @@ Response.isResponse = function (response) {
  * @returns {Object}
  */
 Response.create = function (context, data) {
-    return utils.create(new this(context, data));
+    Constructor.prototype = new Response(context, data);
+    return new Constructor();
 };
 
 /**
@@ -81,10 +83,10 @@ Response.create = function (context, data) {
  * @returns {Response}
  */
 Response.resolve = function (results) {
-    var response = new this();
+    var response = new Response();
 
     response.state = 1;
-    response.result = utils.toArray(arguments);
+    response.result = toArray(arguments);
     response.isResolved = true;
 
     return response;
@@ -97,10 +99,10 @@ Response.resolve = function (results) {
  * @returns {Response}
  */
 Response.reject = function (reason) {
-    var response = new this();
+    var response = new Response();
 
     response.state = 2;
-    response.reason = utils.toError(reason);
+    response.reason = toError(reason);
 
     return response;
 };
@@ -133,7 +135,7 @@ Response.strictQueue = function () {
  * @returns {Response}
  */
 Response.fCall = function (method, args) {
-    var response = new this();
+    var response = new Response();
 
     return response.run.apply(response, arguments);
 };
@@ -145,15 +147,15 @@ Response.fCall = function (method, args) {
  * @returns {Response}
  */
 Response.fApply = function (method, args) {
-    var response = new this();
-    var arg = utils.toArray(args);
+    var response = new Response();
+    var arg = toArray(args);
 
     arg.unshift(method);
 
     return response.run.apply(response, arg);
 };
 
-utils.inherits(Response, EventEmitter);
+inherits(Response, new EventEmitter());
 
 /**
  * @type {string}
@@ -251,7 +253,7 @@ Response.prototype.on = function (type, listener, context) {
         case 1:
             if (type === this.EVENT_RESOLVE) {
                 EventEmitter.event = event;
-                result = this.result = utils.toArray(this.result);
+                result = this.result = toArray(this.result);
 
                 try {
                     switch (result.length) {
@@ -286,7 +288,7 @@ Response.prototype.on = function (type, listener, context) {
                 try {
                     listener.call(context, this.reason);
                 } catch (error) {
-                    this.reason = utils.toError(error);
+                    this.reason = toError(error);
                 }
 
                 EventEmitter.event = currentEvent;
@@ -320,7 +322,7 @@ Response.prototype.emit = function (type, args) {
 
     if (reason) {
         if (this.state === 2) {
-            this.reason = utils.toError(reason);
+            this.reason = toError(reason);
         } else {
             this.reject(reason);
         }
@@ -437,10 +439,10 @@ Response.prototype.reject = function (reason) {
     this.isResolved = false;
 
     if (arguments.length && reason != null) {
-        this.reason = utils.toError(reason);
+        this.reason = toError(reason);
     }
 
-    if (utils.isArray(this.result)) {
+    if (isArray(this.result)) {
         this.result.length = 0;
     } else {
         this.result = [];
@@ -496,18 +498,18 @@ Response.prototype.clear = function () {
  * @returns {Object|Array}
  */
 Response.prototype.map = function (keys) {
-    this.result = utils.toArray(this.result);
+    this.result = toArray(this.result);
 
     var index = 0;
     var length = this.result.length;
-    var callback = utils.isFunction(keys) ? keys : utils.toFunction(this.keys, null);
+    var callback = isFunction(keys) ? keys : toFunction(this.keys, null);
     var key;
     var value;
 
-    keys = utils.toArray(keys, this.keys);
+    keys = toArray(keys, this.keys);
 
-    var hasKeys = utils.isArray(keys);
-    var hasCallback = !utils.isNull(callback);
+    var hasKeys = isArray(keys);
+    var hasCallback = callback !== null;
 
     var result = hasKeys ? {} : [];
     var args = [];
@@ -518,7 +520,7 @@ Response.prototype.map = function (keys) {
         if (Response.isResponse(value)) {
             value = value.map();
 
-            if (!hasKeys && utils.isArray(value)) {
+            if (!hasKeys && isArray(value)) {
                 push.apply(result, value);
 
                 if (hasCallback) {
@@ -530,7 +532,7 @@ Response.prototype.map = function (keys) {
             }
         }
 
-        key = hasKeys ? utils.toString(keys[index]) : String(index);
+        key = hasKeys ? isString(value) && String(value) : String(index);
 
         if (key) {
             result[key] = value;
@@ -545,7 +547,7 @@ Response.prototype.map = function (keys) {
 
     if (hasCallback) {
         try {
-            result = utils.toSomething(callback.apply(this, args), result);
+            result = toSomething(callback.apply(this, args), result);
         } catch (error) {
             this.reject(error);
         }
@@ -604,7 +606,7 @@ Response.prototype.wrap = function (wrapped, callback) {
         throw new Error('wrapped is not defined');
     }
 
-    if (this.callback == null || utils.isFunction(callback)) {
+    if (this.callback == null || isFunction(callback)) {
         this.setCallback(callback);
     }
 
@@ -625,7 +627,7 @@ Response.prototype.run = function (method, args) {
     var index = 0;
     var length;
 
-    if (utils.isString(method)) {
+    if (isString(method)) {
         if (wrapped == null) {
             throw new Error('Wrapped object is not defined. Use the Response#wrap method.');
         }
@@ -633,10 +635,10 @@ Response.prototype.run = function (method, args) {
         method = wrapped[method];
     }
 
-    if (utils.isFunction(method)) {
+    if (isFunction(method)) {
         this.pending();
 
-        if (!utils.isFunction(this.callback)) {
+        if (!isFunction(this.callback)) {
             this.setCallback();
         }
 
@@ -691,7 +693,7 @@ Response.prototype.run = function (method, args) {
  * @returns {Response}
  */
 Response.prototype.setContext = function (context) {
-    if (utils.isNull(context) || utils.isObject(context)) {
+    if (typeof context === 'object') {
         this.context = context;
     }
 
@@ -715,7 +717,7 @@ Response.prototype.setData = function (data) {
  * @returns {Response}
  */
 Response.prototype.setKeys = function (keys) {
-    this.keys = utils.isFunction(keys) ? keys : utils.toArray(keys, this.keys);
+    this.keys = isFunction(keys) ? keys : toArray(keys, this.keys);
 
     return this;
 };
@@ -773,9 +775,9 @@ Response.prototype.setKeys = function (keys) {
  * @returns {Response}
  */
 Response.prototype.setCallback = function (callback) {
-    callback = utils.toFunction(callback, this.constructor.prototype.callback);
+    callback = toFunction(callback, this.constructor.prototype.callback);
 
-    if (!utils.isFunction(callback)) {
+    if (!isFunction(callback)) {
         throw new Error('callback is not a function');
     }
 
@@ -795,7 +797,7 @@ Response.prototype.setCallback = function (callback) {
  * @returns {Function}
  */
 Response.prototype.getCallback = function () {
-    return utils.isFunction(this.callback) ? this.callback : this.setCallback().callback;
+    return isFunction(this.callback) ? this.callback : this.setCallback().callback;
 };
 
 /**
@@ -863,15 +865,15 @@ Response.prototype.complete = function () {
  * @returns {Response}
  */
 Response.prototype.then = function (onResolve, onReject, onProgress, context) {
-    if (utils.isFunction(onResolve)) {
+    if (isFunction(onResolve)) {
         this.once(this.EVENT_RESOLVE, onResolve, context);
     }
 
-    if (utils.isFunction(onReject)) {
+    if (isFunction(onReject)) {
         this.once(this.EVENT_REJECT, onReject, context);
     }
 
-    if (utils.isFunction(onProgress)) {
+    if (isFunction(onProgress)) {
         this.on(this.EVENT_PROGRESS, onProgress, context);
     }
 
@@ -946,8 +948,8 @@ Response.prototype.onResult = function (listener, context) {
 function Queue(stack, start) {
     Response.call(this);
 
-    this.stack = utils.toArray(stack);
-    this.stopped = !utils.toBoolean(start, false);
+    this.stack = toArray(stack);
+    this.stopped = !toBoolean(start, false);
     this.item = null;
 
     this
@@ -961,7 +963,7 @@ function Queue(stack, start) {
     return this;
 }
 
-utils.inherits(Queue, Response);
+inherits(Queue, new Response());
 
 Queue.prototype.EVENT_START = 'start';
 Queue.prototype.EVENT_STOP = 'stop';
@@ -981,7 +983,7 @@ Queue.prototype.start = function () {
 
     if (stack.length === 0) {
         if (this.stopped === false) {
-            this.resolve.apply(this, utils.toArray(this.result));
+            this.resolve.apply(this, toArray(this.result));
         }
 
         return this;
@@ -992,9 +994,9 @@ Queue.prototype.start = function () {
     item = stack.shift();
 
     if (this.state === 0) {
-        if (utils.isFunction(item)) {
+        if (isFunction(item)) {
             try {
-                item = item.apply(this, utils.toArray(this.item && this.item.result));
+                item = item.apply(this, toArray(this.item && this.item.result));
             } catch (error) {
                 this.reject(error);
                 return this;
@@ -1024,7 +1026,7 @@ Queue.prototype.start = function () {
             .ready()
             .onResult(onResultItem, this);
     } else {
-        this.result = utils.toArray(this.result);
+        this.result = toArray(this.result);
         this.result.push(item);
         this.start();
     }
@@ -1061,7 +1063,7 @@ Queue.prototype.push = function () {
  * @returns {Queue}
  */
 Queue.prototype.clear = function () {
-    var result = this.result = utils.toArray(this.result);
+    var result = this.result = toArray(this.result);
     var length = result.length;
     var index = 0;
     var response;
@@ -1162,6 +1164,7 @@ function onResultItem(data) {
     var argsLength;
     var index = 0;
 
+    this.result = toArray(this.result);
     this.result.push(item);
 
     switch (item.state) {
@@ -1204,11 +1207,84 @@ function onResultItem(data) {
 
     if (this.stopped === false) {
         if (this.stack.length === 0) {
-            this.resolve.apply(this, utils.toArray(this.result));
+            this.resolve.apply(this, toArray(this.result));
         } else {
             this.start();
         }
     }
 
     return this;
+}
+
+function is(object, type) {
+    return (object === null ? 'Null' : toString.call(object).slice(8, -1)) === type;
+}
+
+function isString(value) {
+    return ((typeof value === 'string') || is(value, 'String')) && value != '';
+}
+
+function isArray(value) {
+    return value != null && is(value, 'Array');
+}
+
+function isFunction(value) {
+    return typeof value === 'function';
+}
+
+function toBoolean(value, defaultValue) {
+    return typeof value === 'boolean' || is(value, 'Boolean') ? value.valueOf() : defaultValue;
+}
+
+function toSomething(value, defaultValue) {
+    return typeof value === 'undefined' ? defaultValue : value;
+}
+
+function toError(value) {
+    return value != null && is(value, 'Error') ? value : new Error(value);
+}
+
+function toArray(value, defaultValue) {
+    if (value == null) {
+        return [];
+    }
+
+    if (isArray(value)) {
+        return value;
+    }
+
+    if (is(value, 'Arguments')) {
+        var index = 0;
+        var length = value.length;
+        var array = new Array(length);
+
+        while (index < length) {
+            array[index] = value[index++];
+        }
+
+        return array;
+    }
+
+    if (arguments.length === 1) {
+        return [];
+    }
+
+    return defaultValue;
+}
+
+function toFunction(value, defaultValue) {
+    return isFunction(value) ? value : defaultValue;
+}
+
+function Constructor(constructor) {
+    if (constructor) {
+        this.constructor = constructor;
+    }
+
+    Constructor.prototype = null;
+}
+
+function inherits(constructor, prototype) {
+    Constructor.prototype = prototype;
+    constructor.prototype = new Constructor(constructor);
 }
