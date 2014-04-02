@@ -23,6 +23,7 @@ function Response(context, data) {
 
     this.state = this.state;
     this.context = typeof context === 'object' ? context : this.context;
+    // Did not inline (target contains unsupported syntax [early])
     this.result = [];
     this.reason = this.reason;
     this.isResolved = this.isResolved;
@@ -256,22 +257,7 @@ Response.prototype.on = function (type, listener, context) {
                 result = this.result = toArray(this.result);
 
                 try {
-                    switch (result.length) {
-                        case 0:
-                            listener.call(context);
-                            break;
-                        case 1:
-                            listener.call(context, result[0]);
-                            break;
-                        case 2:
-                            listener.call(context, result[0], result[1]);
-                            break;
-                        case 3:
-                            listener.call(context, result[0], result[1], result[2]);
-                            break;
-                        default:
-                            listener.apply(context, result);
-                    }
+                    listener.apply(context, result);
                 } catch (error) {
                     this.reject(error);
                 }
@@ -339,10 +325,10 @@ Response.prototype.pending = function () {
     var prototype = this.constructor.prototype;
 
     this.state = prototype.state;
+    // Did not inline (target contains unsupported syntax [early])
     this.result = [];
     this.reason = prototype.reason;
     this.isResolved = prototype.isResolved;
-
     this.final();
 
     return this;
@@ -411,7 +397,7 @@ Response.prototype.resolve = function (results) {
                 this.emit(this.EVENT_RESOLVE, results, arguments[1], arguments[2]);
                 break;
             default:
-                args = new Array(length + 1);
+                args = toArray(arguments);
                 index = 0;
                 args[index] = this.EVENT_RESOLVE;
 
@@ -445,6 +431,7 @@ Response.prototype.reject = function (reason) {
     if (isArray(this.result)) {
         this.result.length = 0;
     } else {
+        // Did not inline (target contains unsupported syntax [early])
         this.result = [];
     }
 
@@ -481,6 +468,7 @@ Response.prototype.clear = function () {
     this.removeAllListeners();
     this.state = prototype.state;
     this.context = prototype.context;
+    // Did not inline (target contains unsupported syntax [early])
     this.result = [];
     this.reason = prototype.reason;
     this.isResolved = prototype.isResolved;
@@ -1171,7 +1159,6 @@ function onResultItem(data) {
         case 0:
             return this.emit(this.EVENT_PROGRESS, data);
             break;
-
         case 1:
             argsLength = arguments.length;
 
@@ -1216,16 +1203,16 @@ function onResultItem(data) {
     return this;
 }
 
-function is(object, type) {
-    return (object === null ? 'Null' : toString.call(object).slice(8, -1)) === type;
+function getType(object) {
+    return (object === null ? 'Null' : toString.call(object).slice(8, -1));
 }
 
 function isString(value) {
-    return ((typeof value === 'string') || is(value, 'String')) && value != '';
+    return ((typeof value === 'string') || getType(value) === 'String') && value != '';
 }
 
 function isArray(value) {
-    return value != null && is(value, 'Array');
+    return value != null && getType(value) === 'Array';
 }
 
 function isFunction(value) {
@@ -1233,7 +1220,7 @@ function isFunction(value) {
 }
 
 function toBoolean(value, defaultValue) {
-    return typeof value === 'boolean' || is(value, 'Boolean') ? value.valueOf() : defaultValue;
+    return typeof value === 'boolean' || getType(value) === 'Boolean' ? value.valueOf() : defaultValue;
 }
 
 function toSomething(value, defaultValue) {
@@ -1241,35 +1228,32 @@ function toSomething(value, defaultValue) {
 }
 
 function toError(value) {
-    return value != null && is(value, 'Error') ? value : new Error(value);
+    return value != null && getType(value) === 'Error' ? value : new Error(value);
 }
 
 function toArray(value, defaultValue) {
-    if (value == null) {
-        return [];
+    switch (getType(value)) {
+        case 'Undefined':
+        case 'Null':
+            return [];
+            break;
+        case 'Array':
+            return value;
+            break;
+        case 'Arguments':
+            var index = 0;
+            var length = value.length;
+            var array = new Array(length);
+
+            while (index < length) {
+                array[index] = value[index++];
+            }
+
+            return array;
+            break;
     }
 
-    if (isArray(value)) {
-        return value;
-    }
-
-    if (is(value, 'Arguments')) {
-        var index = 0;
-        var length = value.length;
-        var array = new Array(length);
-
-        while (index < length) {
-            array[index] = value[index++];
-        }
-
-        return array;
-    }
-
-    if (arguments.length === 1) {
-        return [];
-    }
-
-    return defaultValue;
+    return arguments.length === 1 ? [] : defaultValue;
 }
 
 function toFunction(value, defaultValue) {
