@@ -5,32 +5,35 @@
 
 var EventEmitter = require('EventEmitter');
 var Event = EventEmitter.Event;
-var utils = require('utils');
 var push = Array.prototype.push;
 var toString = Object.prototype.toString;
+var on = EventEmitter.prototype.on;
+var emit = EventEmitter.prototype.emit;
 
 /**
  *
- * @param {Object|null} [context]
- * @param {*} [data]
+ * @param {Function} [wrapper]
  * @constructor
  * @requires EventEmitter
- * @requires utils
  * @extends EventEmitter
  */
-function Response(context, data) {
+function Response(wrapper) {
     EventEmitter.call(this);
 
     this.state = this.state;
-    this.context = typeof context === 'object' ? context : this.context;
-    // Did not inline (target contains unsupported syntax [early])
+    this.context = this.context;
+    // TODO: Did not inline (target contains unsupported syntax [early])
     this.result = [];
     this.reason = this.reason;
     this.isResolved = this.isResolved;
-    this.data = arguments.length === 2 ? data : this.data;
+    this.data = this.data;
     this.keys = this.keys;
     this.wrapped = this.wrapped;
     this.callback = null;
+
+    if (isFunction(wrapper)) {
+        wrapper.call(this);
+    }
 }
 
 /**
@@ -69,12 +72,11 @@ Response.isResponse = function (response) {
  * module.exports instanceof Response; // true
  * module.exports.hasOwnProperty('resolve'); // false
  *
- * @param {Object|null} [context]
- * @param {*} [data]
+ * @param {Function} [wrapper]
  * @returns {Object}
  */
-Response.create = function (context, data) {
-    Constructor.prototype = new Response(context, data);
+Response.create = function (wrapper) {
+    Constructor.prototype = new Response(wrapper);
     return new Constructor();
 };
 
@@ -87,7 +89,7 @@ Response.resolve = function (results) {
     var response = new Response();
 
     response.state = 1;
-    response.result = toArray(arguments);
+    response.result = argsToArray.apply(null, arguments);
     response.isResolved = true;
 
     return response;
@@ -114,7 +116,7 @@ Response.reject = function (reason) {
  * @returns {Queue}
  */
 Response.queue = function () {
-    return new Queue(arguments);
+    return new Queue(argsToArray.apply(null, arguments));
 };
 
 /**
@@ -123,7 +125,7 @@ Response.queue = function () {
  * @returns {Queue}
  */
 Response.strictQueue = function () {
-    return new Queue(arguments).strict();
+    return new Queue(argsToArray.apply(null, arguments)).strict();
 };
 
 /**
@@ -138,7 +140,7 @@ Response.strictQueue = function () {
 Response.fCall = function (method, args) {
     var response = new Response();
 
-    return response.run.apply(response, arguments);
+    return response.invoke.apply(response, arguments);
 };
 
 /**
@@ -153,7 +155,7 @@ Response.fApply = function (method, args) {
 
     arg.unshift(method);
 
-    return response.run.apply(response, arg);
+    return response.invoke.apply(response, arg);
 };
 
 inherits(Response, new EventEmitter());
@@ -234,30 +236,17 @@ Response.prototype.wrapped = null;
  * @returns {Response}
  */
 Response.prototype.on = function (type, listener, context) {
-    var state = this.state;
+    var event = (type instanceof Event) ? type : new Event(type, listener, context);
     var currentEvent = EventEmitter.event;
-    var event;
-    var result;
+    var ctx = event.context == null ? this.context : event.context;
 
-    if (type instanceof Event) {
-        event = type;
-
-        type = event.type;
-        listener = event.listener;
-    } else {
-        event = new Event(type, listener, context);
-    }
-
-    context = event.context || this.context || this;
-
-    switch (state) {
+    switch (this.state) {
         case 1:
-            if (type === this.EVENT_RESOLVE) {
+            if (event.type === this.EVENT_RESOLVE) {
                 EventEmitter.event = event;
-                result = this.result = toArray(this.result);
 
                 try {
-                    listener.apply(context, result);
+                    event.listener.apply(ctx == null ? this : ctx, this.result = toArray(this.result));
                 } catch (error) {
                     this.reject(error);
                 }
@@ -268,11 +257,11 @@ Response.prototype.on = function (type, listener, context) {
             break;
 
         case 2:
-            if (type === this.EVENT_REJECT) {
+            if (event.type === this.EVENT_REJECT) {
                 EventEmitter.event = event;
 
                 try {
-                    listener.call(context, this.reason);
+                    event.listener.call(ctx == null ? this : ctx, this.reason);
                 } catch (error) {
                     this.reason = toError(error);
                 }
@@ -283,13 +272,20 @@ Response.prototype.on = function (type, listener, context) {
             break;
     }
 
-    EventEmitter.prototype.on.call(this, event);
+    on.call(this, event);
 
     return this;
 };
 
+/**
+ *
+ * @param {String} type
+ * @param {Function} listener
+ * @param {Object} [context]
+ * @returns {Response}
+ */
 Response.prototype.once = function (type, listener, context) {
-    return this.on(type instanceof Event ? type : new Event(type, listener, context, true));
+    return this.on(new Event(type, listener, context, true));
 };
 
 /**
@@ -301,7 +297,7 @@ Response.prototype.emit = function (type, args) {
     var result = false;
 
     try {
-        result = EventEmitter.prototype.emit.apply(this, arguments);
+        result = emit.apply(this, arguments);
     } catch (error) {
         reason = error;
     }
@@ -325,7 +321,7 @@ Response.prototype.pending = function () {
     var prototype = this.constructor.prototype;
 
     this.state = prototype.state;
-    // Did not inline (target contains unsupported syntax [early])
+    // TODO: Did not inline (target contains unsupported syntax [early])
     this.result = [];
     this.reason = prototype.reason;
     this.isResolved = prototype.isResolved;
@@ -380,34 +376,15 @@ Response.prototype.resolve = function (results) {
     }
 
     if (state === 0) {
-        switch (length) {
-            case 0:
-                this.emit(this.EVENT_RESOLVE);
-                break;
-            case 1:
-                this.result = [results];
-                this.emit(this.EVENT_RESOLVE, results);
-                break;
-            case 2:
-                this.result = [results, arguments[1]];
-                this.emit(this.EVENT_RESOLVE, results, arguments[1]);
-                break;
-            case 3:
-                this.result = [results, arguments[1], arguments[2]];
-                this.emit(this.EVENT_RESOLVE, results, arguments[1], arguments[2]);
-                break;
-            default:
-                args = toArray(arguments);
-                index = 0;
-                args[index] = this.EVENT_RESOLVE;
+        args = new Array(length + 1);
+        args[index] = this.EVENT_RESOLVE;
 
-                while (index < length) {
-                    args[index + 1] = arguments[index++];
-                }
-
-                this.result = args.slice(1);
-                this.emit.apply(this, args);
+        while (index < length) {
+            args[index + 1] = arguments[index++];
         }
+
+        this.result = args.slice(1);
+        this.emit.apply(this, args);
     }
 
     return this;
@@ -431,7 +408,7 @@ Response.prototype.reject = function (reason) {
     if (isArray(this.result)) {
         this.result.length = 0;
     } else {
-        // Did not inline (target contains unsupported syntax [early])
+        // TODO: Did not inline (target contains unsupported syntax [early])
         this.result = [];
     }
 
@@ -468,7 +445,7 @@ Response.prototype.clear = function () {
     this.removeAllListeners();
     this.state = prototype.state;
     this.context = prototype.context;
-    // Did not inline (target contains unsupported syntax [early])
+    // TODO: Did not inline (target contains unsupported syntax [early])
     this.result = [];
     this.reason = prototype.reason;
     this.isResolved = prototype.isResolved;
@@ -550,34 +527,16 @@ Response.prototype.map = function (keys) {
  * @param {...*} [results]
  */
 Response.prototype.callback = function responseCallback(error, results) {
-    var index = 0;
-    var length = arguments.length - 1;
-    var args;
-
     if (error == null) {
-        switch (length) {
-            case -1:
-            case 0:
-                self.resolve();
-                break;
-            case 1:
-                self.resolve(results);
-                break;
-            case 2:
-                self.resolve(results, arguments[2]);
-                break;
-            case 3:
-                self.resolve(results, arguments[2], arguments[3]);
-                break;
-            default:
-                args = new Array(length);
+        var index = 0;
+        var length = arguments.length - 1;
+        var args = new Array(length);
 
-                while (index < length) {
-                    args[index] = arguments[++index];
-                }
-
-                self.resolve.apply(self, args);
+        while (index < length) {
+            args[index++] = arguments[index];
         }
+
+        self.resolve.apply(self, args);
     } else {
         self.reject(error);
     }
@@ -589,7 +548,7 @@ Response.prototype.callback = function responseCallback(error, results) {
  * @param {Function} [callback]
  * @returns {Response}
  */
-Response.prototype.wrap = function (wrapped, callback) {
+Response.prototype.bind = function (wrapped, callback) {
     if (wrapped == null) {
         throw new Error('wrapped is not defined');
     }
@@ -609,7 +568,7 @@ Response.prototype.wrap = function (wrapped, callback) {
  * @param {...*} [args]
  * @returns {Response}
  */
-Response.prototype.run = function (method, args) {
+Response.prototype.invoke = function (method, args) {
     var wrapped = this.wrapped;
     var arg;
     var index = 0;
@@ -617,7 +576,7 @@ Response.prototype.run = function (method, args) {
 
     if (isString(method)) {
         if (wrapped == null) {
-            throw new Error('Wrapped object is not defined. Use the Response#wrap method.');
+            throw new Error('Wrapped object is not defined. Use the Response#bind method.');
         }
 
         method = wrapped[method];
@@ -631,30 +590,6 @@ Response.prototype.run = function (method, args) {
         }
 
         length = arguments.length;
-
-        try {
-            switch (length) {
-                case 1:
-                    method.call(wrapped, this.callback);
-                    return this;
-                    break;
-                case 2:
-                    method.call(wrapped, args, this.callback);
-                    return this;
-                    break;
-                case 3:
-                    method.call(wrapped, args, arguments[2], this.callback);
-                    return this;
-                    break;
-                case 4:
-                    method.call(wrapped, args, arguments[2], arguments[3], this.callback);
-                    return this;
-                    break;
-            }
-        } catch (error) {
-            return this.reject(error);
-        }
-
         arg = new Array(length);
 
         while (index < length) {
@@ -1161,31 +1096,15 @@ function onResultItem(data) {
             break;
         case 1:
             argsLength = arguments.length;
+            args = new Array(argsLength + 1);
+            args[0] = this.EVENT_RESOLVE_ITEM;
 
-            switch (argsLength) {
-                case 0:
-                    this.emit(this.EVENT_RESOLVE_ITEM);
-                    break;
-                case 1:
-                    this.emit(this.EVENT_RESOLVE_ITEM, data);
-                    break;
-                case 2:
-                    this.emit(this.EVENT_RESOLVE_ITEM, data, arguments[1]);
-                    break;
-                case 3:
-                    this.emit(this.EVENT_RESOLVE_ITEM, data, arguments[1], arguments[2]);
-                    break;
-                default:
-                    args = new Array(argsLength + 1);
-                    args[0] = this.EVENT_RESOLVE_ITEM;
-
-                    while (index < argsLength) {
-                        args[index + 1] = arguments[index];
-                        index++;
-                    }
-
-                    this.emit.apply(this, args);
+            while (index < argsLength) {
+                args[index + 1] = arguments[index];
+                index++;
             }
+
+            this.emit.apply(this, args);
             break;
         case 2:
             this.emit(this.EVENT_REJECT_ITEM, data);
@@ -1240,17 +1159,6 @@ function toArray(value, defaultValue) {
         case 'Array':
             return value;
             break;
-        case 'Arguments':
-            var index = 0;
-            var length = value.length;
-            var array = new Array(length);
-
-            while (index < length) {
-                array[index] = value[index++];
-            }
-
-            return array;
-            break;
     }
 
     return arguments.length === 1 ? [] : defaultValue;
@@ -1271,4 +1179,16 @@ function Constructor(constructor) {
 function inherits(constructor, prototype) {
     Constructor.prototype = prototype;
     constructor.prototype = new Constructor(constructor);
+}
+
+function argsToArray() {
+    var length = arguments.length;
+    var index = 0;
+    var result = new Array(length);
+
+    while (index < length) {
+        result[index] = arguments[index++];
+    }
+
+    return result;
 }

@@ -12,8 +12,7 @@
         "node": "*"
     },
     "dependencies": {
-        "EventEmitter": "B-Vladi/EventEmitter",
-        "utils": "B-Vladi/utils"
+        "EventEmitter": "B-Vladi/EventEmitter"
     },
     "bugs": {
         "email": "b-vladi@cs-console.ru",
