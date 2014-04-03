@@ -4,7 +4,6 @@
  */
 
 var EventEmitter = require('EventEmitter');
-var Event = EventEmitter.Event;
 var push = Array.prototype.push;
 var toString = Object.prototype.toString;
 var on = EventEmitter.prototype.on;
@@ -29,7 +28,7 @@ function Response(wrapper) {
     this.data = this.data;
     this.keys = this.keys;
     this.wrapped = this.wrapped;
-    this.callback = null;
+    this.callback = this.callback;
 
     if (isFunction(wrapper)) {
         wrapper.call(this);
@@ -52,7 +51,7 @@ Response.STATE_RESOLVED = 1;
  * @type {Number}
  * @constant
  */
-Response.STATE_REJECTED = 2;
+Response.STATE_REJECTED = -1;
 
 /**
  *
@@ -104,7 +103,7 @@ Response.resolve = function (results) {
 Response.reject = function (reason) {
     var response = new Response();
 
-    response.state = 2;
+    response.state = -1;
     response.reason = toError(reason);
 
     return response;
@@ -162,71 +161,90 @@ inherits(Response, new EventEmitter());
 
 /**
  * @type {string}
+ * @default 'ready'
  */
 Response.prototype.EVENT_READY = 'ready';
 
 /**
  * @type {string}
+ * @default 'progress'
  */
 Response.prototype.EVENT_PROGRESS = 'progress';
 
 /**
  * @type {string}
+ * @default 'resolve'
  */
 Response.prototype.EVENT_RESOLVE = 'resolve';
 
 /**
  * @type {string}
+ * @default 'error'
  */
 Response.prototype.EVENT_REJECT = 'error';
 
 /**
  * @readonly
  * @type {Number}
+ * @default 0
  */
 Response.prototype.state = Response.STATE_PENDING;
 
 /**
  *
  * @type {Object}
+ * @default null
  */
 Response.prototype.context = null;
 
 /**
  *
  * @type {Array}
+ * @default null
  */
 Response.prototype.result = null;
 
 /**
  *
  * @type {Error}
+ * @default null
  */
 Response.prototype.reason = null;
 
 /**
  * @readonly
  * @type {Boolean}
+ * @default false
  */
 Response.prototype.isResolved = false;
 
 /**
  *
  * @type {*}
+ * @default null
  */
 Response.prototype.data = null;
 
 /**
  *
  * @type {Array|Function}
+ * @default null
  */
 Response.prototype.keys = null;
 
 /**
  *
  * @type {Object}
+ * @default null
  */
 Response.prototype.wrapped = null;
+
+/**
+ *
+ * @type {Function|null}
+ * @default null
+ */
+Response.prototype.callback = null;
 
 /**
  *
@@ -236,7 +254,7 @@ Response.prototype.wrapped = null;
  * @returns {Response}
  */
 Response.prototype.on = function (type, listener, context) {
-    var event = (type instanceof Event) ? type : new Event(type, listener, context);
+    var event = (type instanceof EventEmitter.Event) ? type : new EventEmitter.Event(type, listener, context);
     var currentEvent = EventEmitter.event;
     var ctx = event.context == null ? this.context : event.context;
 
@@ -256,7 +274,7 @@ Response.prototype.on = function (type, listener, context) {
             }
             break;
 
-        case 2:
+        case -1:
             if (event.type === this.EVENT_REJECT) {
                 EventEmitter.event = event;
 
@@ -285,12 +303,13 @@ Response.prototype.on = function (type, listener, context) {
  * @returns {Response}
  */
 Response.prototype.once = function (type, listener, context) {
-    return this.on(new Event(type, listener, context, true));
+    return this.on(new EventEmitter.Event(type, listener, context, true));
 };
 
 /**
  * @param {string} type Тип события.
  * @param {...*} [args] Аргументы, передаваемые в обработчик события.
+ * @returns {Boolean}
  */
 Response.prototype.emit = function (type, args) {
     var reason;
@@ -303,7 +322,7 @@ Response.prototype.emit = function (type, args) {
     }
 
     if (reason) {
-        if (this.state === 2) {
+        if (this.state === -1) {
             this.reason = toError(reason);
         } else {
             this.reject(reason);
@@ -369,22 +388,27 @@ Response.prototype.resolve = function (results) {
     this.reason = null;
     this.isResolved = true;
 
-    if (state === 2) {
+    if (state === -1) {
         EventEmitter.stop(this);
 
         state = 0;
     }
 
     if (state === 0) {
-        args = new Array(length + 1);
-        args[index] = this.EVENT_RESOLVE;
+        if (length) {
+            args = new Array(length + 1);
+            args[0] = this.EVENT_RESOLVE;
 
-        while (index < length) {
-            args[index + 1] = arguments[index++];
+            while (index < length) {
+                args[index + 1] = arguments[index++];
+            }
+
+            this.result = args.slice(1);
+            this.emit.apply(this, args);
+        } else {
+            this.result = [];
+            this.emit(this.EVENT_RESOLVE);
         }
-
-        this.result = args.slice(1);
-        this.emit.apply(this, args);
     }
 
     return this;
@@ -398,7 +422,7 @@ Response.prototype.resolve = function (results) {
 Response.prototype.reject = function (reason) {
     var state = this.state;
 
-    this.state = 2;
+    this.state = -1;
     this.isResolved = false;
 
     if (arguments.length && reason != null) {
@@ -452,9 +476,17 @@ Response.prototype.clear = function () {
     this.data = prototype.data;
     this.keys = prototype.keys;
     this.wrapped = prototype.wrapped;
-    this.callback = null;
+    this.callback = prototype.callback;
 
     return this;
+};
+
+/**
+ *
+ * @param {Function} callback
+ */
+Response.prototype.spread = function (callback) {
+    callback.apply(this, this.result);
 };
 
 /**
@@ -467,7 +499,7 @@ Response.prototype.map = function (keys) {
 
     var index = 0;
     var length = this.result.length;
-    var callback = isFunction(keys) ? keys : toFunction(this.keys, null);
+    var callback = isFunction(keys) ? keys : isFunction(this.keys) ? this.keys : null;
     var key;
     var value;
 
@@ -523,37 +555,12 @@ Response.prototype.map = function (keys) {
 
 /**
  *
- * @param {Error|null} [error]
- * @param {...*} [results]
- */
-Response.prototype.callback = function responseCallback(error, results) {
-    if (error == null) {
-        var index = 0;
-        var length = arguments.length - 1;
-        var args = new Array(length);
-
-        while (index < length) {
-            args[index++] = arguments[index];
-        }
-
-        self.resolve.apply(self, args);
-    } else {
-        self.reject(error);
-    }
-};
-
-/**
- *
- * @param {Object} wrapped
+ * @param {Object} [wrapped]
  * @param {Function} [callback]
  * @returns {Response}
  */
 Response.prototype.bind = function (wrapped, callback) {
-    if (wrapped == null) {
-        throw new Error('wrapped is not defined');
-    }
-
-    if (this.callback == null || isFunction(callback)) {
+    if (!isFunction(this.callback) || isFunction(callback)) {
         this.setCallback(callback);
     }
 
@@ -576,7 +583,7 @@ Response.prototype.invoke = function (method, args) {
 
     if (isString(method)) {
         if (wrapped == null) {
-            throw new Error('Wrapped object is not defined. Use the Response#bind method.');
+            return this.reject('Wrapped object is not defined. Use the Response#bind method.');
         }
 
         method = wrapped[method];
@@ -593,7 +600,7 @@ Response.prototype.invoke = function (method, args) {
         arg = new Array(length);
 
         while (index < length) {
-            arg[index] = arguments[++index];
+            arg[index++] = arguments[index];
         }
 
         arg[index] = this.callback;
@@ -603,11 +610,11 @@ Response.prototype.invoke = function (method, args) {
         } catch (error) {
             this.reject(error);
         }
-
-        return this;
     } else {
-        throw new Error('method is not a function');
+        this.reject('method is not a function');
     }
+
+    return this;
 };
 
 /**
@@ -694,17 +701,38 @@ Response.prototype.setKeys = function (keys) {
  * $.getJSON('ajax/test.json', r.callback);
  *
  * @param {Function} [callback=this.callback]
- * @throws {Error} Бросает исключение, если callback не является функцией.
  * @returns {Response}
  */
 Response.prototype.setCallback = function (callback) {
-    callback = toFunction(callback, this.constructor.prototype.callback);
+    if (isFunction(callback)) {
+        this.callback = callback;
+    } else {
+        var self = this;
 
-    if (!isFunction(callback)) {
-        throw new Error('callback is not a function');
+        this.callback = function responseCallback(error, results) {
+            if (error == null) {
+                var index = 0;
+                var length = arguments.length;
+                var args;
+
+                if (length && --length) {
+                    args = new Array(length);
+
+                    while (index < length) {
+                        args[index++] = arguments[index];
+                    }
+
+                    self.resolve.apply(self, args);
+                } else {
+                    self.resolve();
+                }
+            } else {
+                self.reject(error);
+            }
+
+            self = null;
+        }
     }
-
-    this.callback = new Function('self', 'return ' + callback.toString())(this);
 
     return this;
 };
@@ -726,7 +754,6 @@ Response.prototype.getCallback = function () {
 /**
  *
  * @param {Response} parent
- * @throws {Error} Бросает исключение, если parent не является экземпляром {@link Response}, является текущим объектом {@link Response}, либо неопределен.
  * @returns {Response}
  * @this {Response}
  */
@@ -734,7 +761,7 @@ Response.prototype.notify = function (parent) {
     if (parent && this !== parent && Response.isResponse(parent)) {
         this.then(parent.resolve, parent.reject, parent.progress, parent);
     } else {
-        throw new Error('parent is not a valid response');
+        this.reject('parent is not a valid response');
     }
 
     return this;
@@ -761,7 +788,7 @@ Response.prototype.listen = function (response) {
     if (response) {
         response.then(this.resolve, this.reject, this.progress, this);
     } else {
-        throw new Error('response is not defined');
+        this.reject('response is not defined');
     }
 
     return this;
@@ -1084,7 +1111,7 @@ module.exports = Response;
 function onResultItem(data) {
     var item = this.item;
     var args;
-    var argsLength;
+    var length;
     var index = 0;
 
     this.result = toArray(this.result);
@@ -1095,18 +1122,22 @@ function onResultItem(data) {
             return this.emit(this.EVENT_PROGRESS, data);
             break;
         case 1:
-            argsLength = arguments.length;
-            args = new Array(argsLength + 1);
-            args[0] = this.EVENT_RESOLVE_ITEM;
+            length = arguments.length;
 
-            while (index < argsLength) {
-                args[index + 1] = arguments[index];
-                index++;
+            if (length) {
+                args = new Array(length + 1);
+                args[0] = this.EVENT_RESOLVE_ITEM;
+
+                while (index < length) {
+                    args[index + 1] = arguments[index++];
+                }
+
+                this.emit.apply(this, args);
+            } else {
+                this.emit(this.EVENT_RESOLVE_ITEM);
             }
-
-            this.emit.apply(this, args);
             break;
-        case 2:
+        case -1:
             this.emit(this.EVENT_REJECT_ITEM, data);
             break;
     }
@@ -1151,21 +1182,15 @@ function toError(value) {
 }
 
 function toArray(value, defaultValue) {
-    switch (getType(value)) {
-        case 'Undefined':
-        case 'Null':
-            return [];
-            break;
-        case 'Array':
-            return value;
-            break;
+    if (value == null) {
+        return [];
+    }
+
+    if (getType(value) === 'Array') {
+        return value;
     }
 
     return arguments.length === 1 ? [] : defaultValue;
-}
-
-function toFunction(value, defaultValue) {
-    return isFunction(value) ? value : defaultValue;
 }
 
 function Constructor(constructor) {
