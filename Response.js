@@ -21,8 +21,9 @@ function Response(wrapper) {
 
     this.state = this.state;
     this.context = this.context;
-    // TODO: Did not inline (target contains unsupported syntax [early])
-    this.result = [];
+    // Fix:
+    // Did not inline (target contains unsupported syntax [early])
+    this.result = new Array(0);
     this.reason = this.reason;
     this.isResolved = this.isResolved;
     this.data = this.data;
@@ -86,9 +87,16 @@ Response.create = function (wrapper) {
  */
 Response.resolve = function (results) {
     var response = new Response();
+    var length = arguments.length;
+    var index = 0;
+    var result = new Array(length);
+
+    while (index < length) {
+        result[index] = arguments[index++];
+    }
 
     response.state = 1;
-    response.result = argsToArray.apply(null, arguments);
+    response.result = result;
     response.isResolved = true;
 
     return response;
@@ -115,7 +123,15 @@ Response.reject = function (reason) {
  * @returns {Queue}
  */
 Response.queue = function () {
-    return new Queue(argsToArray.apply(null, arguments));
+    var length = arguments.length;
+    var index = 0;
+    var stack = new Array(length);
+
+    while (index < length) {
+        stack[index] = arguments[index++];
+    }
+
+    return new Queue(stack);
 };
 
 /**
@@ -124,7 +140,15 @@ Response.queue = function () {
  * @returns {Queue}
  */
 Response.strictQueue = function () {
-    return new Queue(argsToArray.apply(null, arguments)).strict();
+    var length = arguments.length;
+    var index = 0;
+    var stack = new Array(length);
+
+    while (index < length) {
+        stack[index] = arguments[index++];
+    }
+
+    return new Queue(stack).strict();
 };
 
 /**
@@ -340,8 +364,9 @@ Response.prototype.pending = function () {
     var prototype = this.constructor.prototype;
 
     this.state = prototype.state;
-    // TODO: Did not inline (target contains unsupported syntax [early])
-    this.result = [];
+    // Fix:
+    // Did not inline (target contains unsupported syntax [early])
+    this.result = new Array(0);
     this.reason = prototype.reason;
     this.isResolved = prototype.isResolved;
     this.final();
@@ -432,8 +457,9 @@ Response.prototype.reject = function (reason) {
     if (isArray(this.result)) {
         this.result.length = 0;
     } else {
-        // TODO: Did not inline (target contains unsupported syntax [early])
-        this.result = [];
+        // Fix:
+        // Did not inline (target contains unsupported syntax [early])
+        this.result = new Array(0);
     }
 
     if (state === 1) {
@@ -469,8 +495,9 @@ Response.prototype.clear = function () {
     this.removeAllListeners();
     this.state = prototype.state;
     this.context = prototype.context;
-    // TODO: Did not inline (target contains unsupported syntax [early])
-    this.result = [];
+    // Fix:
+    // Did not inline (target contains unsupported syntax [early])
+    this.result = new Array(0);
     this.reason = prototype.reason;
     this.isResolved = prototype.isResolved;
     this.data = prototype.data;
@@ -704,7 +731,9 @@ Response.prototype.setKeys = function (keys) {
  * @returns {Response}
  */
 Response.prototype.setCallback = function (callback) {
-    if (isFunction(callback)) {
+    // Fix:
+    // Did not inline isFunction called from Response.setCallback (target requires context change).
+    if (typeof callback === 'function') {
         this.callback = callback;
     } else {
         var self = this;
@@ -785,7 +814,7 @@ Response.prototype.notify = function (parent) {
  * @this {Response}
  */
 Response.prototype.listen = function (response) {
-    if (response) {
+    if (response && isFunction(response.then)) {
         response.then(this.resolve, this.reject, this.progress, this);
     } else {
         this.reject('response is not defined');
@@ -1183,14 +1212,14 @@ function toError(value) {
 
 function toArray(value, defaultValue) {
     if (value == null) {
-        return [];
+        return new Array(0);
     }
 
     if (getType(value) === 'Array') {
         return value;
     }
 
-    return arguments.length === 1 ? [] : defaultValue;
+    return arguments.length === 1 ? new Array(0) : defaultValue;
 }
 
 function Constructor(constructor) {
@@ -1204,16 +1233,4 @@ function Constructor(constructor) {
 function inherits(constructor, prototype) {
     Constructor.prototype = prototype;
     constructor.prototype = new Constructor(constructor);
-}
-
-function argsToArray() {
-    var length = arguments.length;
-    var index = 0;
-    var result = new Array(length);
-
-    while (index < length) {
-        result[index] = arguments[index++];
-    }
-
-    return result;
 }
