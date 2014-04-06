@@ -87,16 +87,14 @@ Response.create = function (wrapper) {
  */
 Response.resolve = function (results) {
     var response = new Response();
-    var length = arguments.length;
     var index = 0;
-    var result = new Array(length);
+    var result = response.result;
 
-    while (index < length) {
+    while (index < arguments.length) {
         result[index] = arguments[index++];
     }
 
     response.state = 1;
-    response.result = result;
     response.isResolved = true;
 
     return response;
@@ -185,6 +183,12 @@ inherits(Response, new EventEmitter());
 
 /**
  * @type {string}
+ * @default 'pending'
+ */
+Response.prototype.EVENT_PENDING = 'pending';
+
+/**
+ * @type {string}
  * @default 'ready'
  */
 Response.prototype.EVENT_READY = 'ready';
@@ -225,6 +229,7 @@ Response.prototype.context = null;
  *
  * @type {Array}
  * @default null
+ * @readonly
  */
 Response.prototype.result = null;
 
@@ -251,10 +256,10 @@ Response.prototype.data = null;
 
 /**
  *
- * @type {Array|Function}
- * @default null
+ * @type {Array}
+ * @default []
  */
-Response.prototype.keys = null;
+Response.prototype.keys = [];
 
 /**
  *
@@ -288,7 +293,7 @@ Response.prototype.on = function (type, listener, context) {
                 EventEmitter.event = event;
 
                 try {
-                    event.listener.apply(ctx == null ? this : ctx, this.result = toArray(this.result));
+                    event.listener.apply(ctx == null ? this : ctx, this.result);
                 } catch (error) {
                     this.reject(error);
                 }
@@ -362,14 +367,17 @@ Response.prototype.emit = function (type, args) {
  */
 Response.prototype.pending = function () {
     var prototype = this.constructor.prototype;
+    var state = this.state;
 
     this.state = prototype.state;
-    // Fix:
-    // Did not inline (target contains unsupported syntax [early])
-    this.result = new Array(0);
+    this.result.length = 0;
     this.reason = prototype.reason;
     this.isResolved = prototype.isResolved;
     this.final();
+
+    if (state !== 0) {
+        this.emit(this.EVENT_PENDING, state);
+    }
 
     return this;
 };
@@ -407,7 +415,7 @@ Response.prototype.resolve = function (results) {
     var state = this.state;
     var length = arguments.length;
     var index = 0;
-    var args;
+    var result = this.result;
 
     this.state = 1;
     this.reason = null;
@@ -420,18 +428,15 @@ Response.prototype.resolve = function (results) {
     }
 
     if (state === 0) {
-        if (length) {
-            args = new Array(length + 1);
-            args[0] = this.EVENT_RESOLVE;
+        result.length = length;
 
+        if (length) {
             while (index < length) {
-                args[index + 1] = arguments[index++];
+                result[index] = arguments[index++];
             }
 
-            this.result = args.slice(1);
-            this.emit.apply(this, args);
+            this.emit.apply(this, [this.EVENT_RESOLVE].concat(result));
         } else {
-            this.result = [];
             this.emit(this.EVENT_RESOLVE);
         }
     }
@@ -454,13 +459,7 @@ Response.prototype.reject = function (reason) {
         this.reason = toError(reason);
     }
 
-    if (isArray(this.result)) {
-        this.result.length = 0;
-    } else {
-        // Fix:
-        // Did not inline (target contains unsupported syntax [early])
-        this.result = new Array(0);
-    }
+    this.result.length = 0;
 
     if (state === 1) {
         EventEmitter.stop(this);
@@ -495,9 +494,7 @@ Response.prototype.clear = function () {
     this.removeAllListeners();
     this.state = prototype.state;
     this.context = prototype.context;
-    // Fix:
-    // Did not inline (target contains unsupported syntax [early])
-    this.result = new Array(0);
+    this.result.length = 0;
     this.reason = prototype.reason;
     this.isResolved = prototype.isResolved;
     this.data = prototype.data;
@@ -511,73 +508,29 @@ Response.prototype.clear = function () {
 /**
  *
  * @param {Function} callback
+ * @param {Object|null} [context=this]
  */
-Response.prototype.spread = function (callback) {
-    callback.apply(this, this.result);
+Response.prototype.spread = function (callback, context) {
+    callback.apply(typeof context === 'object' ? context : this, this.result);
 };
 
 /**
  *
- * @param {Array|Function} [keys]
- * @returns {Object|Array}
+ * @param {Array} [keys=this.keys]
+ * @returns {Object}
  */
 Response.prototype.map = function (keys) {
-    this.result = toArray(this.result);
-
+    var result = this.result;
+    var _keys = isArray(keys) ? keys : this.keys;
+    var length = _keys.length;
     var index = 0;
-    var length = this.result.length;
-    var callback = isFunction(keys) ? keys : isFunction(this.keys) ? this.keys : null;
-    var key;
-    var value;
-
-    keys = toArray(keys, this.keys);
-
-    var hasKeys = isArray(keys);
-    var hasCallback = callback !== null;
-
-    var result = hasKeys ? {} : [];
-    var args = [];
+    var hash = {};
 
     while (index < length) {
-        value = this.result[index];
-
-        if (Response.isResponse(value)) {
-            value = value.map();
-
-            if (!hasKeys && isArray(value)) {
-                push.apply(result, value);
-
-                if (hasCallback) {
-                    push.apply(args, value);
-                }
-
-                index++;
-                continue;
-            }
-        }
-
-        key = hasKeys ? isString(value) && String(value) : String(index);
-
-        if (key) {
-            result[key] = value;
-        }
-
-        if (hasCallback) {
-            args[index] = value;
-        }
-
-        index++;
+        hash[_keys[index]] = result[index++];
     }
 
-    if (hasCallback) {
-        try {
-            result = toSomething(callback.apply(this, args), result);
-        } catch (error) {
-            this.reject(error);
-        }
-    }
-
-    return result;
+    return hash;
 };
 
 /**
@@ -587,7 +540,7 @@ Response.prototype.map = function (keys) {
  * @returns {Response}
  */
 Response.prototype.bind = function (wrapped, callback) {
-    if (!isFunction(this.callback) || isFunction(callback)) {
+    if (isFunction(callback) || !isFunction(this.callback)) {
         this.setCallback(callback);
     }
 
@@ -600,6 +553,7 @@ Response.prototype.bind = function (wrapped, callback) {
  *
  * @param {Function|String} method
  * @param {...*} [args]
+ * @throws {Error} Бросает исключение, если методом является строка и response не привязан к объекту, либо метод не является функцией.
  * @returns {Response}
  */
 Response.prototype.invoke = function (method, args) {
@@ -607,22 +561,17 @@ Response.prototype.invoke = function (method, args) {
     var arg;
     var index = 0;
     var length;
+    var _method = method;
 
-    if (isString(method)) {
+    if (isString(_method)) {
         if (wrapped == null) {
-            return this.reject('Wrapped object is not defined. Use the Response#bind method.');
+            throw new Error('Wrapped object is not defined. Use the Response#bind method.');
         }
 
-        method = wrapped[method];
+        _method = wrapped[_method];
     }
 
-    if (isFunction(method)) {
-        this.pending();
-
-        if (!isFunction(this.callback)) {
-            this.setCallback();
-        }
-
+    if (isFunction(_method)) {
         length = arguments.length;
         arg = new Array(length);
 
@@ -630,15 +579,17 @@ Response.prototype.invoke = function (method, args) {
             arg[index++] = arguments[index];
         }
 
-        arg[index] = this.callback;
+        arg[index] = this
+            .pending()
+            .getCallback();
 
         try {
-            method.apply(wrapped, arg);
+            _method.apply(wrapped, arg);
         } catch (error) {
             this.reject(error);
         }
     } else {
-        this.reject('method is not a function');
+        throw new Error('method is not a function');
     }
 
     return this;
@@ -670,11 +621,11 @@ Response.prototype.setData = function (data) {
 
 /**
  *
- * @param {Array|Function} keys
+ * @param {Array} [keys=this.keys]
  * @returns {Response}
  */
 Response.prototype.setKeys = function (keys) {
-    this.keys = isFunction(keys) ? keys : toArray(keys, this.keys);
+    this.keys = isArray(keys) ? keys : this.keys;
 
     return this;
 };
@@ -682,53 +633,20 @@ Response.prototype.setKeys = function (keys) {
 /**
  * @example
  * var Response = require('Response');
- * var fs = require('fs');
- * var r = new Response();
+ * var r = new Response()
  *
- * // Getting the reference on the response out of callback
- * r.setCallback(function (error, fd) {
- *   r.resolve(fd); // ReferenceError: r is not defined
- *   self.resolve(fd); // OK, variable "self" is a reference on a response
- * });
- *
- * r.callback = function (error, fd) {
- *   r.resolve(fd); // OK
- *   self.resolve(fd); // ReferenceError: self is not defined
- * }
- *
- * // Invalid callback
- * r.setCallback(function self (error, fd) {
- *   r.resolve(fd); // ReferenceError: r is not defined
- *   self.resolve(fd); // TypeError: self.resolve is not a function
- * });
- *
- * // Using a default callback
- * r.setCallback();
- * fs.open('/file.txt', 'r', r.callback);
- *
- * r
- * .then(function (fd) {
- *   // File is opened
- *   this.pending(); // Stops execution of other event handlers
- *   fs.close(fd, this.callback);
- * })
- * .then(function () {
- *   // File is closed
- * });
- *
- * // Using a custom callback
- * r = new Response().setCallback(function (data, textStatus, jqXHR) {
- *   if (!data || data.error) {
- *      self.reject(data.error);
+ * r.setCallback(function (data, textStatus, jqXHR) {
+ *   if (data && !data.error) {
+ *      r.resolve(data.result);
  *   } else {
- *      self.resolve(data.result);
+ *      r.reject(data.error);
  *   }
  * });
  *
  * $.getJSON('ajax/test.json', r.callback);
  *
- * @param {Function} [callback=this.callback]
- * @returns {Response}
+ * @param {Function} [callback={Function}]
+ * @returns {Function}
  */
 Response.prototype.setCallback = function (callback) {
     // Fix:
@@ -763,34 +681,34 @@ Response.prototype.setCallback = function (callback) {
         }
     }
 
-    return this;
+    return this.callback;
 };
 
 /**
  * @example
- * var Response = require('Response');
- * var fs = require('fs');
  * var r = new Response();
- *
  * fs.open('/file.txt', 'r', r.getCallback());
  *
  * @returns {Function}
  */
 Response.prototype.getCallback = function () {
-    return isFunction(this.callback) ? this.callback : this.setCallback().callback;
+    return isFunction(this.callback) ? this.callback : this.setCallback();
 };
 
 /**
  *
  * @param {Response} parent
+ * @throws {Error} Бросает исключение, если parent равен this.
  * @returns {Response}
  * @this {Response}
  */
 Response.prototype.notify = function (parent) {
-    if (parent && this !== parent && Response.isResponse(parent)) {
+    if (parent == this) {
+        throw new Error('Can\'t notify itself');
+    }
+
+    if (parent && Response.isResponse(parent)) {
         this.then(parent.resolve, parent.reject, parent.progress, parent);
-    } else {
-        this.reject('parent is not a valid response');
     }
 
     return this;
@@ -810,15 +728,16 @@ Response.prototype.notify = function (parent) {
  *   }));
  *
  * @param {Response|Object} response
+ * @throws {Error} Бросает исключение, если response равен this.
  * @returns {Response}
  * @this {Response}
  */
 Response.prototype.listen = function (response) {
-    if (response && isFunction(response.then)) {
-        response.then(this.resolve, this.reject, this.progress, this);
-    } else {
-        this.reject('response is not defined');
+    if (response == this) {
+        throw new Error('Can\'t listen on itself');
     }
+
+    response.then(this.resolve, this.reject, this.progress, this);
 
     return this;
 };
@@ -942,14 +861,54 @@ function Queue(stack, start) {
     return this;
 }
 
+Queue.isQueue = function (object) {
+    return object instanceof Queue;
+};
+
 inherits(Queue, new Response());
 
+/**
+ * @default 'start'
+ * @type {String}
+ */
 Queue.prototype.EVENT_START = 'start';
+
+/**
+ * @default 'stop'
+ * @type {String}
+ */
 Queue.prototype.EVENT_STOP = 'stop';
+
+/**
+ * @default 'resolveItem'
+ * @type {String}
+ */
 Queue.prototype.EVENT_RESOLVE_ITEM = 'resolveItem';
+
+/**
+ * @default 'rejectItem'
+ * @type {String}
+ */
 Queue.prototype.EVENT_REJECT_ITEM = 'rejectItem';
+
+/**
+ * @readonly
+ * @type {Array}
+ */
 Queue.prototype.stack = null;
+
+/**
+ * @readonly
+ * @default true
+ * @type {Boolean}
+ */
 Queue.prototype.stopped = true;
+
+/**
+ * @readonly
+ * @default null
+ * @type {*}
+ */
 Queue.prototype.item = null;
 
 /**
@@ -962,7 +921,7 @@ Queue.prototype.start = function () {
 
     if (stack.length === 0) {
         if (this.stopped === false) {
-            this.resolve.apply(this, toArray(this.result));
+            this.resolve.apply(this, this.result);
         }
 
         return this;
@@ -975,7 +934,11 @@ Queue.prototype.start = function () {
     if (this.state === 0) {
         if (isFunction(item)) {
             try {
-                item = item.apply(this, toArray(this.item && this.item.result));
+                if (Response.isResponse(this.item) && this.item.result.length) {
+                    item = item.apply(this, this.item.result);
+                } else {
+                    item = item.call(this);
+                }
             } catch (error) {
                 this.reject(error);
                 return this;
@@ -1005,7 +968,6 @@ Queue.prototype.start = function () {
             .ready()
             .onResult(onResultItem, this);
     } else {
-        this.result = toArray(this.result);
         this.result.push(item);
         this.start();
     }
@@ -1042,7 +1004,7 @@ Queue.prototype.push = function () {
  * @returns {Queue}
  */
 Queue.prototype.clear = function () {
-    var result = this.result = toArray(this.result);
+    var result = this.result;
     var length = result.length;
     var index = 0;
     var response;
@@ -1058,6 +1020,7 @@ Queue.prototype.clear = function () {
 
     result.length = 0;
 
+    // Copy-paste from Response#clear, reason: fixed deoptimization for V8.
     this.removeAllListeners();
     this.stack.length = 0;
     this.item = prototype.item;
@@ -1068,9 +1031,37 @@ Queue.prototype.clear = function () {
     this.data = prototype.data;
     this.keys = prototype.keys;
     this.wrapped = prototype.wrapped;
-    this.callback = null;
+    this.callback = prototype.callback;
 
     return this;
+};
+
+/**
+ *
+ * @param [keys=this.keys]
+ * @returns {Object}
+ */
+Queue.prototype.map = function (keys) {
+    var result = this.result;
+    var _keys = isArray(keys) ? keys : this.keys;
+    var key;
+    var length = _keys.length;
+    var index = 0;
+    var hash = {};
+    var item;
+
+    while (index < length) {
+        item = result[index++];
+        key = _keys[index];
+
+        if (Response.isResponse(item)) {
+            item = item.map(key);
+        }
+
+        hash[key] = item;
+    }
+
+    return hash;
 };
 
 /**
@@ -1143,7 +1134,6 @@ function onResultItem(data) {
     var length;
     var index = 0;
 
-    this.result = toArray(this.result);
     this.result.push(item);
 
     switch (item.state) {
@@ -1173,7 +1163,7 @@ function onResultItem(data) {
 
     if (this.stopped === false) {
         if (this.stack.length === 0) {
-            this.resolve.apply(this, toArray(this.result));
+            this.resolve.apply(this, this.result);
         } else {
             this.start();
         }
@@ -1183,7 +1173,7 @@ function onResultItem(data) {
 }
 
 function getType(object) {
-    return (object === null ? 'Null' : toString.call(object).slice(8, -1));
+    return toString.call(object).slice(8, -1);
 }
 
 function isString(value) {
@@ -1191,7 +1181,7 @@ function isString(value) {
 }
 
 function isArray(value) {
-    return value != null && getType(value) === 'Array';
+    return !(value == null || getType(value) !== 'Array');
 }
 
 function isFunction(value) {
@@ -1202,24 +1192,12 @@ function toBoolean(value, defaultValue) {
     return typeof value === 'boolean' || getType(value) === 'Boolean' ? value.valueOf() : defaultValue;
 }
 
-function toSomething(value, defaultValue) {
-    return typeof value === 'undefined' ? defaultValue : value;
-}
-
 function toError(value) {
-    return value != null && getType(value) === 'Error' ? value : new Error(value);
+    return value == null || getType(value) !== 'Error' ? new Error(value) : value;
 }
 
-function toArray(value, defaultValue) {
-    if (value == null) {
-        return new Array(0);
-    }
-
-    if (getType(value) === 'Array') {
-        return value;
-    }
-
-    return arguments.length === 1 ? new Array(0) : defaultValue;
+function toArray(value) {
+    return value == null || getType(value) !== 'Array' ? new Array(0) : value;
 }
 
 function Constructor(constructor) {
