@@ -454,12 +454,11 @@ Response.prototype.reject = function (reason) {
 
     this.state = -1;
     this.isResolved = false;
+    this.result.length = 0;
 
     if (arguments.length && reason != null) {
         this.reason = toError(reason);
     }
-
-    this.result.length = 0;
 
     if (state === 1) {
         EventEmitter.stop(this);
@@ -563,12 +562,12 @@ Response.prototype.invoke = function (method, args) {
     var length;
     var _method = method;
 
-    if (isString(_method)) {
+    if (isString(method)) {
         if (wrapped == null) {
             throw new Error('Wrapped object is not defined. Use the Response#bind method.');
         }
 
-        _method = wrapped[_method];
+        _method = wrapped[method];
     }
 
     if (isFunction(_method)) {
