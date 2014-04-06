@@ -550,6 +550,24 @@ Response.prototype.bind = function (wrapped, callback) {
 
 /**
  *
+ * @example
+ * new Response()
+ *   .then(function (fd) {
+ *     // File is opened, read first 10 bytes
+ *     this
+ *       .setData(fd) // Save file descriptor
+ *       .invoke(fs.read, fd, new Buffer(), 0, 10, null);
+ *   })
+ *   .then(function (bytesRead, buffer) {
+ *     // File is read
+ *     this.invoke(fs.close, this.data);
+ *   })
+ *   .then(function (fd) {
+ *     // File is closed
+ *   })
+ *   // Start
+ *   .invoke(fs.open, '/file.txt', 'r');
+ *
  * @param {Function|String} method
  * @param {...*} [args]
  * @throws {Error} Бросает исключение, если методом является строка и response не привязан к объекту, либо метод не является функцией.
@@ -578,9 +596,11 @@ Response.prototype.invoke = function (method, args) {
             arg[index++] = arguments[index];
         }
 
-        arg[index] = this
-            .pending()
-            .getCallback();
+        if (this.state !== 0) {
+            this.pending();
+        }
+
+        arg[index] = this.getCallback();
 
         try {
             _method.apply(wrapped, arg);
@@ -758,7 +778,7 @@ Response.prototype.complete = function () {
  * @param {Function} [onResolve]
  * @param {Function} [onReject]
  * @param {Function} [onProgress]
- * @param {Object} [context]
+ * @param {Object} [context=this]
  * @returns {Response}
  */
 Response.prototype.then = function (onResolve, onReject, onProgress, context) {
@@ -780,7 +800,7 @@ Response.prototype.then = function (onResolve, onReject, onProgress, context) {
 /**
  *
  * @param {Function} listener
- * @param {Object|null} [context]
+ * @param {Object|null} [context=this]
  * @returns {Response}
  */
 Response.prototype.onResolve = function (listener, context) {
@@ -791,7 +811,7 @@ Response.prototype.onResolve = function (listener, context) {
 /**
  *
  * @param {Function} listener
- * @param {Object|null} [context]
+ * @param {Object|null} [context=this]
  * @returns {Response}
  */
 Response.prototype.onReady = function (listener, context) {
@@ -802,7 +822,7 @@ Response.prototype.onReady = function (listener, context) {
 /**
  *
  * @param {Function} listener
- * @param {Object|null} [context]
+ * @param {Object|null} [context=this]
  * @returns {Response}
  */
 Response.prototype.onReject = function (listener, context) {
@@ -813,7 +833,7 @@ Response.prototype.onReject = function (listener, context) {
 /**
  *
  * @param {Function} listener
- * @param {Object|null} [context]
+ * @param {Object|null} [context=this]
  * @returns {Response}
  */
 Response.prototype.onProgress = function (listener, context) {
@@ -823,7 +843,7 @@ Response.prototype.onProgress = function (listener, context) {
 /**
  *
  * @param {Function} listener
- * @param {Object|null} [context]
+ * @param {Object|null} [context=this]
  * @returns {Response}
  */
 Response.prototype.onResult = function (listener, context) {
@@ -990,10 +1010,10 @@ Queue.prototype.stop = function () {
 };
 
 /**
- *
+ * @param {...*} [args]
  * @returns {Queue}
  */
-Queue.prototype.push = function () {
+Queue.prototype.push = function (args) {
     push.apply(this.stack, arguments);
     return this;
 };
@@ -1019,7 +1039,7 @@ Queue.prototype.clear = function () {
 
     result.length = 0;
 
-    // Copy-paste from Response#clear, reason: fixed deoptimization for V8.
+    // Achtung! Copy-paste from Response#clear, reason: fixed deoptimization for V8.
     this.removeAllListeners();
     this.stack.length = 0;
     this.item = prototype.item;
@@ -1130,6 +1150,7 @@ module.exports = Response;
 function onResultItem(data) {
     var item = this.item;
     var args;
+    var arg;
     var length;
     var index = 0;
 
@@ -1147,7 +1168,8 @@ function onResultItem(data) {
                 args[0] = this.EVENT_RESOLVE_ITEM;
 
                 while (index < length) {
-                    args[index + 1] = arguments[index++];
+                    arg = arguments[index++];
+                    args[index] = arg;
                 }
 
                 this.emit.apply(this, args);
@@ -1196,7 +1218,7 @@ function toError(value) {
 }
 
 function toArray(value) {
-    return value == null || getType(value) !== 'Array' ? new Array(0) : value;
+    return isArray(value) ? value : new Array(0);
 }
 
 function Constructor(constructor) {
