@@ -172,11 +172,8 @@ Response.fCall = function (method, args) {
  */
 Response.fApply = function (method, args) {
     var response = new Response();
-    var arg = toArray(args);
 
-    arg.unshift(method);
-
-    return response.invoke.apply(response, arg);
+    return response.invoke.apply(response, [method].concat(isArray(args) ? args : []));
 };
 
 inherits(Response, new EventEmitter());
@@ -746,6 +743,19 @@ Response.prototype.notify = function (parent) {
  *     resolve('success');
  *   }));
  *
+ * new Response()
+ *   .then(function (result) {
+ *     // result is 'foo' here
+ *     this.isResolved; // true
+ *     this.listen(Response.resolve('bar'));
+ *     this.isResolved; // false
+ *   })
+ *   .then(function (result) {
+ *     // result is 'bar' here
+ *     this.isResolved; // true
+ *   })
+ *   .resolve('foo');
+ *
  * @param {Response|Object} response
  * @throws {Error} Бросает исключение, если response равен this.
  * @returns {Response}
@@ -754,6 +764,10 @@ Response.prototype.notify = function (parent) {
 Response.prototype.listen = function (response) {
     if (response === this) {
         throw new Error('Can\'t listen on itself');
+    }
+
+    if (this.state !== 0) {
+        this.pending();
     }
 
     response.then(this.resolve, this.reject, this.progress, this);
@@ -765,7 +779,7 @@ Response.prototype.listen = function (response) {
  *
  * @returns {Response}
  */
-Response.prototype.complete = function () {
+Response.prototype.done = function () {
     this
         .once(this.EVENT_RESOLVE, this.clear)
         .once(this.EVENT_REJECT, this.clear);
@@ -793,6 +807,21 @@ Response.prototype.then = function (onResolve, onReject, onProgress, context) {
     if (isFunction(onProgress)) {
         this.on(this.EVENT_PROGRESS, onProgress, context);
     }
+
+    return this;
+};
+
+/**
+ *
+ * @param {Function} listener
+ * @param {Object|null} [context=this]
+ * @returns {Response}
+ */
+Response.prototype.always = function (listener, context) {
+    this
+        .once(this.EVENT_RESOLVE, listener, context)
+        .once(this.EVENT_REJECT, listener, context)
+        .on(this.EVENT_PROGRESS, listener, context);
 
     return this;
 };
@@ -842,21 +871,6 @@ Response.prototype.onProgress = function (listener, context) {
 
 /**
  *
- * @param {Function} listener
- * @param {Object|null} [context=this]
- * @returns {Response}
- */
-Response.prototype.onResult = function (listener, context) {
-    this
-        .once(this.EVENT_RESOLVE, listener, context)
-        .once(this.EVENT_REJECT, listener, context)
-        .on(this.EVENT_PROGRESS, listener, context);
-
-    return this;
-};
-
-/**
- *
  * @param {Array} [stack=[]]
  * @param {Boolean} [start=false]
  * @constructor
@@ -865,7 +879,7 @@ Response.prototype.onResult = function (listener, context) {
 function Queue(stack, start) {
     Response.call(this);
 
-    this.stack = toArray(stack);
+    this.stack = isArray(stack) ? stack : new Array(0);
     this.stopped = !toBoolean(start, false);
     this.item = null;
 
@@ -1215,10 +1229,6 @@ function toBoolean(value, defaultValue) {
 
 function toError(value) {
     return value == null || getType(value) !== 'Error' ? new Error(value) : value;
-}
-
-function toArray(value) {
-    return isArray(value) ? value : new Array(0);
 }
 
 function Constructor(constructor) {
