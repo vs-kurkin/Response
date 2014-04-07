@@ -512,6 +512,11 @@ Response.prototype.spread = function (callback, context) {
 
 /**
  *
+ * @example
+ * new Response()
+ *   .resolve(1, 2)
+ *   .map(['foo', 'bar']); // {foo: 1, bar: 2}
+ *
  * @param {Array} [keys=this.keys]
  * @returns {Object}
  */
@@ -1071,7 +1076,7 @@ Queue.prototype.clear = function () {
 
 /**
  *
- * @param [keys=this.keys]
+ * @param {Array} [keys=this.keys]
  * @returns {Object}
  */
 Queue.prototype.map = function (keys) {
