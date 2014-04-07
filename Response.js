@@ -722,7 +722,7 @@ Response.prototype.getCallback = function () {
  * @this {Response}
  */
 Response.prototype.notify = function (parent) {
-    if (parent == this) {
+    if (parent === this) {
         throw new Error('Can\'t notify itself');
     }
 
@@ -752,7 +752,7 @@ Response.prototype.notify = function (parent) {
  * @this {Response}
  */
 Response.prototype.listen = function (response) {
-    if (response == this) {
+    if (response === this) {
         throw new Error('Can\'t listen on itself');
     }
 
