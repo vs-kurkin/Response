@@ -777,8 +777,7 @@ Response.prototype.always = function (listener, context) {
  * @returns {Response}
  */
 Response.prototype.onResolve = function (listener, context) {
-    this.onceState(this.STATE_RESOLVED, listener, context);
-    return this;
+    return this.onceState(this.STATE_RESOLVED, listener, context);
 };
 
 /**
@@ -788,8 +787,7 @@ Response.prototype.onResolve = function (listener, context) {
  * @returns {Response}
  */
 Response.prototype.onReject = function (listener, context) {
-    this.onceState(this.STATE_REJECTED, listener, context);
-    return this;
+    return this.onceState(this.STATE_REJECTED, listener, context);
 };
 
 /**
@@ -799,8 +797,7 @@ Response.prototype.onReject = function (listener, context) {
  * @returns {Response}
  */
 Response.prototype.onReady = function (listener, context) {
-    this.on(this.EVENT_READY, listener, context);
-    return this;
+    return this.on(this.EVENT_READY, listener, context);
 };
 
 /**
@@ -904,25 +901,25 @@ Queue.prototype.start = function () {
 
     item = stack.shift();
 
-    if (this.state === this.STATE_PENDING) {
-        if (isFunction(item)) {
-            try {
-                if (Response.isResponse(this.item) && this.item.result.length) {
-                    item = item.apply(this, this.item.result);
-                } else {
-                    item = item.call(this);
-                }
-            } catch (error) {
-                this.reject(error);
-                return this;
-            }
-
-            if (this.stopped === true) {
-                return this;
-            }
-        }
-    } else {
+    if (this.state !== this.STATE_PENDING) {
         return this;
+    }
+
+    if (isFunction(item)) {
+        try {
+            if (Response.isResponse(this.item) && this.item.result.length) {
+                item = item.apply(this, this.item.result);
+            } else {
+                item = item.call(this);
+            }
+        } catch (error) {
+            this.reject(error);
+            return this;
+        }
+
+        if (this.stopped === true) {
+            return this;
+        }
     }
 
     if (item === this) {
@@ -939,10 +936,11 @@ Queue.prototype.start = function () {
     if (Response.isResponse(item)) {
         item
             .ready()
-            .always(onResultItem, this);
+            .onceState(this.STATE_RESOLVED, onResultItem, this)
+            .onceState(this.STATE_REJECTED, onResultItem, this);
     } else {
         this.result.push(item);
-        this.start();
+        return this.start();
     }
 
     return this;
@@ -1102,37 +1100,31 @@ function onResultItem(data) {
 
     this.result.push(item);
 
-    switch (item.state) {
-        case this.STATE_PENDING:
-            return this.emit(this.EVENT_PROGRESS, data);
-            break;
-        case this.STATE_RESOLVED:
-            index = arguments.length;
+    if (item.state === this.STATE_RESOLVED) {
+        index = arguments.length;
 
-            if (index) {
-                args = new Array(index + 1);
+        if (index) {
+            args = new Array(index + 1);
 
-                while (index) {
-                    args[index--] = arguments[index];
-                }
-
-                args[0] = this.EVENT_RESOLVE_ITEM;
-
-                this.emit.apply(this, args);
-            } else {
-                this.emit(this.EVENT_RESOLVE_ITEM);
+            while (index) {
+                args[index--] = arguments[index];
             }
-            break;
-        case this.STATE_REJECTED:
-            this.emit(this.EVENT_REJECT_ITEM, data);
-            break;
+
+            args[0] = this.EVENT_RESOLVE_ITEM;
+
+            this.emit.apply(this, args);
+        } else {
+            this.emit(this.EVENT_RESOLVE_ITEM);
+        }
+    } else if (item.state === this.STATE_REJECTED) {
+        this.emit(this.EVENT_REJECT_ITEM, data);
     }
 
     if (this.stopped === false) {
-        if (this.stack.length === 0) {
-            this.resolve.apply(this, this.result);
-        } else {
+        if (this.stack.length) {
             this.start();
+        } else {
+            this.resolve.apply(this, this.result);
         }
     }
 
