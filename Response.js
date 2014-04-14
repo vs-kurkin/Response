@@ -4,6 +4,7 @@
  */
 
 var EventEmitter = require('EventEmitter');
+var Event = EventEmitter.Event;
 var push = Array.prototype.push;
 var toString = Object.prototype.toString;
 var on = EventEmitter.prototype.on;
@@ -65,13 +66,6 @@ function Response(wrapper) {
 
     /**
      *
-     * @type {Object}
-     * @default null
-     */
-    this.context = null;
-
-    /**
-     *
      * Fix: Did not inline (target contains unsupported syntax [early])
      * @type {Array}
      * @default []
@@ -98,7 +92,7 @@ function Response(wrapper) {
      * @type {Object}
      * @default null
      */
-    this.wrapped = null;
+    this.context = null;
 
     /**
      *
@@ -147,11 +141,11 @@ Response.create = function (wrapper) {
  */
 Response.resolve = function (results) {
     var response = new Response();
-    var index = 0;
     var result = response.result;
+    var index = arguments.length;
 
-    while (index < arguments.length) {
-        result[index] = arguments[index++];
+    while (index--) {
+        result[index] = arguments[index];
     }
 
     response.state = response.STATE_RESOLVED;
@@ -175,17 +169,16 @@ Response.reject = function (reason) {
 };
 
 /**
- *
+ * @param {...*} [args]
  * @static
  * @returns {Queue}
  */
-Response.queue = function () {
-    var length = arguments.length;
-    var index = 0;
-    var stack = new Array(length);
+Response.queue = function (args) {
+    var index = arguments.length;
+    var stack = new Array(index);
 
-    while (index < length) {
-        stack[index] = arguments[index++];
+    while (index--) {
+        stack[index] = arguments[index];
     }
 
     return new Queue(stack);
@@ -193,16 +186,16 @@ Response.queue = function () {
 
 /**
  *
+ * @param {...*} [args]
  * @static
  * @returns {Queue}
  */
-Response.strictQueue = function () {
-    var length = arguments.length;
-    var index = 0;
-    var stack = new Array(length);
+Response.strictQueue = function (args) {
+    var index = arguments.length;
+    var stack = new Array(index);
 
-    while (index < length) {
-        stack[index] = arguments[index++];
+    while (index--) {
+        stack[index] = arguments[index];
     }
 
     return new Queue(stack).strict();
@@ -214,7 +207,7 @@ Response.strictQueue = function () {
  *  .fCall(fs.open, '/file.txt', 'r')
  *  .then(function (content) {});
  * @param {Function} method
- * @param {...*} args
+ * @param {...*} [args]
  * @returns {Response}
  */
 Response.fCall = function (method, args) {
@@ -226,7 +219,7 @@ Response.fCall = function (method, args) {
 /**
  *
  * @param {Function} method
- * @param {Array} [args]
+ * @param {Array} [args=[]]
  * @returns {Response}
  */
 Response.fApply = function (method, args) {
@@ -241,7 +234,7 @@ inherits(Response, new EventEmitter());
  *
  * @param {String} type
  * @param {Function} listener
- * @param {Object} [context]
+ * @param {Object} [context=this]
  * @returns {Response}
  */
 Response.prototype.once = function (type, listener, context) {
@@ -280,32 +273,41 @@ Response.prototype.emit = function (type, args) {
  * @param {...*} [args]
  */
 Response.prototype.setState = function (state, args) {
-    if (this.state !== state) {
-        var index = 0;
-        var length = arguments.length - 1;
+    var index = arguments.length;
 
+    if (index-- && this.state !== state) {
         this.state = state;
-        this.stateData = new Array(length);
+        this.stateData.length = index;
 
-        while (index < length) {
-            this.stateData[index++] = arguments[index];
+        if (index--) {
+            while (index--) {
+                this.stateData[index] = arguments[index + 1];
+            }
+
+            this.emit.apply(this, arguments);
+        } else {
+            this.emit(state);
         }
-
-        this.emit.apply(this, arguments);
     }
 
     return this;
 };
 
+/**
+ *
+ * @param {String|Number|Event} state
+ * @param {Function} [listener]
+ * @param {Object|null} [context=this]
+ * @returns {Response}
+ */
 Response.prototype.onState = function (state, listener, context) {
-    var event = (state instanceof EventEmitter.Event) ? state : new EventEmitter.Event(state, listener, context);
+    var event = (state instanceof Event) ? state : new Event(state, listener, context);
     var currentEvent = EventEmitter.event;
-    var ctx = event.context == null ? this.context : event.context;
 
-    if (this.state === state) {
+    if (this.state === event.type) {
         EventEmitter.event = event;
 
-        event.listener.apply(ctx == null ? this : ctx, this.stateData);
+        event.listener.apply(event.context == null ? this : event.context, this.stateData);
 
         EventEmitter.event = currentEvent;
 
@@ -319,9 +321,15 @@ Response.prototype.onState = function (state, listener, context) {
     return this;
 };
 
-
+/**
+ *
+ * @param {String|Number|Event} state
+ * @param {Function} [listener]
+ * @param {Object|null} [context=this]
+ * @returns {Response}
+ */
 Response.prototype.onceState = function (state, listener, context) {
-    return this.onState(new EventEmitter.Event(state, listener, context, true));
+    return this.onState(new Event(state, listener, context, true));
 };
 
 /**
@@ -332,7 +340,6 @@ Response.prototype.pending = function () {
     this.result.length = 0;
     this.reason = null;
     this.final();
-
     this.setState(this.STATE_PENDING);
 
     return this;
@@ -343,8 +350,7 @@ Response.prototype.pending = function () {
  * @returns {Response}
  */
 Response.prototype.resolve = function (results) {
-    var length = arguments.length;
-    var index = 0;
+    var index = arguments.length;
     var result = this.result;
 
     this.reason = null;
@@ -353,11 +359,11 @@ Response.prototype.resolve = function (results) {
         EventEmitter.stop(this);
     }
 
-    if (length) {
-        result.length = length;
+    if (index) {
+        result.length = index;
 
-        while (index < length) {
-            result[index] = arguments[index++];
+        while (index--) {
+            result[index] = arguments[index];
         }
 
         this.setState.apply(this, [this.STATE_RESOLVED].concat(result));
@@ -395,6 +401,14 @@ Response.prototype.reject = function (reason) {
  */
 Response.prototype.isResolved = function () {
     return this.state === this.STATE_RESOLVED;
+};
+
+/**
+ *
+ * @returns {Boolean}
+ */
+Response.prototype.isRejected = function () {
+    return this.state === this.STATE_REJECTED;
 };
 
 
@@ -484,16 +498,18 @@ Response.prototype.map = function (keys) {
 
 /**
  *
- * @param {Object} [wrapped]
+ * @param {Object|null} [context]
  * @param {Function} [callback]
  * @returns {Response}
  */
-Response.prototype.bind = function (wrapped, callback) {
+Response.prototype.bind = function (context, callback) {
     if (isFunction(callback) || !isFunction(this.callback)) {
         this.setCallback(callback);
     }
 
-    this.wrapped = wrapped;
+    if (typeof context === 'object') {
+        this.context = context;
+    }
 
     return this;
 };
@@ -501,22 +517,24 @@ Response.prototype.bind = function (wrapped, callback) {
 /**
  *
  * @example
- * new Response()
+ * Response
+ *   // Open file.txt;
+ *   .fCall(fs.open, '/file.txt', 'r')
+ *
+ *   // File is opened, read first 10 bytes
  *   .then(function (fd) {
- *     // File is opened, read first 10 bytes
  *     this
  *       .setData(fd) // Save file descriptor
  *       .invoke(fs.read, fd, new Buffer(), 0, 10, null);
  *   })
+ *
+ *   // File is read
  *   .then(function (bytesRead, buffer) {
- *     // File is read
  *     this.invoke(fs.close, this.data);
  *   })
- *   .then(function (fd) {
- *     // File is closed
- *   })
- *   // Start
- *   .invoke(fs.open, '/file.txt', 'r');
+ *
+ *   // File is closed
+ *   .then(function (fd) {});
  *
  * @param {Function|String} method
  * @param {...*} [args]
@@ -524,36 +542,34 @@ Response.prototype.bind = function (wrapped, callback) {
  * @returns {Response}
  */
 Response.prototype.invoke = function (method, args) {
-    var wrapped = this.wrapped;
+    var context = this.context;
     var arg;
-    var index = 0;
-    var length;
+    var index;
     var _method = method;
 
     if (isString(method)) {
-        if (wrapped == null) {
-            throw new Error('Wrapped object is not defined. Use the Response#bind method.');
+        if (context == null) {
+            throw new Error('Context object is not defined. Use the Response#bind method.');
         }
 
-        _method = wrapped[method];
+        _method = context[method];
     }
 
     if (isFunction(_method)) {
-        length = arguments.length;
-        arg = new Array(length);
+        index = arguments.length;
+        arg = new Array(index--);
+        arg[index] = this.getCallback();
 
-        while (index < length) {
-            arg[index++] = arguments[index];
+        while (index--) {
+            arg[index] = arguments[index + 1];
         }
 
         if (this.state !== this.STATE_PENDING) {
             this.pending();
         }
 
-        arg[index] = this.getCallback();
-
         try {
-            _method.apply(wrapped, arg);
+            _method.apply(context, arg);
         } catch (error) {
             this.reject(error);
         }
@@ -566,24 +582,11 @@ Response.prototype.invoke = function (method, args) {
 
 /**
  *
- * @param {Object|null} context
- * @returns {Response}
- */
-Response.prototype.setContext = function (context) {
-    if (typeof context === 'object') {
-        this.context = context;
-    }
-
-    return this;
-};
-
-/**
- *
- * @param {*} data
+ * @param {*} [data=null]
  * @returns {Response}
  */
 Response.prototype.setData = function (data) {
-    this.data = data;
+    this.data = arguments.length ? data : null;
 
     return this;
 };
@@ -615,16 +618,15 @@ Response.prototype.setCallback = function (callback) {
         var self = this;
 
         this.callback = function responseCallback(error, results) {
+            var index = arguments.length;
+            var args;
+
             if (error == null) {
-                var index = 0;
-                var length = arguments.length;
-                var args;
+                if (index && --index) {
+                    args = new Array(index);
 
-                if (length && --length) {
-                    args = new Array(length);
-
-                    while (index < length) {
-                        args[index++] = arguments[index];
+                    while (index--) {
+                        args[index] = arguments[index + 1];
                     }
 
                     self.resolve.apply(self, args);
@@ -1094,11 +1096,9 @@ Response.Queue = Queue;
 module.exports = Response;
 
 function onResultItem(data) {
-    var item = this.item;
     var args;
-    var arg;
-    var length;
-    var index = 0;
+    var index;
+    var item = this.item;
 
     this.result.push(item);
 
@@ -1107,16 +1107,16 @@ function onResultItem(data) {
             return this.emit(this.EVENT_PROGRESS, data);
             break;
         case this.STATE_RESOLVED:
-            length = arguments.length;
+            index = arguments.length;
 
-            if (length) {
-                args = new Array(length + 1);
-                args[0] = this.EVENT_RESOLVE_ITEM;
+            if (index) {
+                args = new Array(index + 1);
 
-                while (index < length) {
-                    arg = arguments[index++];
-                    args[index] = arg;
+                while (index) {
+                    args[index--] = arguments[index];
                 }
+
+                args[0] = this.EVENT_RESOLVE_ITEM;
 
                 this.emit.apply(this, args);
             } else {
