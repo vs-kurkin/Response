@@ -307,7 +307,7 @@ Response.prototype.onState = function (state, listener, context) {
     if (this.state === event.type) {
         EventEmitter.event = event;
 
-        event.listener.apply(event.context == null ? this : event.context, this.stateData);
+        event.listener.apply(typeof event.context === 'object' ? event.context : this, this.stateData);
 
         EventEmitter.event = currentEvent;
 
