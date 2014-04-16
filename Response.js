@@ -51,6 +51,13 @@ function Response(wrapper) {
     this.EVENT_PROGRESS = 'progress';
 
     /**
+     *
+     * @type {*}
+     * @default null
+     */
+    this.data = null;
+
+    /**
      * @readonly
      * @type {String}
      * @default 'pending'
@@ -82,13 +89,6 @@ function Response(wrapper) {
 
     /**
      *
-     * @type {*}
-     * @default null
-     */
-    this.data = null;
-
-    /**
-     *
      * @type {Object}
      * @default null
      */
@@ -102,7 +102,7 @@ function Response(wrapper) {
     this.callback = null;
 
     if (isFunction(wrapper)) {
-        wrapper.call(this);
+        this.invoke(wrapper);
     }
 
     return this;
@@ -169,6 +169,32 @@ Response.reject = function (reason) {
 };
 
 /**
+ *
+ * @param {Error|*} [error]
+ * @param {...*} [results]
+ */
+Response.callback = function responseCallback(error, results) {
+    var index = arguments.length;
+    var arg;
+
+    if (error == null) {
+        if (index && --index) {
+            arg = new Array(index);
+
+            while (index--) {
+                arg[index] = arguments[index + 1];
+            }
+
+            this.resolve.apply(this, arg);
+        } else {
+            this.resolve();
+        }
+    } else {
+        this.reject(error);
+    }
+};
+
+/**
  * @param {...*} [args]
  * @static
  * @returns {Queue}
@@ -201,34 +227,48 @@ Response.strictQueue = function (args) {
     return new Queue(stack).strict();
 };
 
+inherits(Response, new EventEmitter());
+
 /**
- * @example
- * Response
- *  .fCall(fs.open, '/file.txt', 'r')
- *  .then(function (content) {});
- * @param {Function} method
- * @param {...*} [args]
+ *
+ * @param {*} [data=null]
  * @returns {Response}
  */
-Response.fCall = function (method, args) {
-    var response = new Response();
+Response.prototype.setData = function (data) {
+    this.data = arguments.length ? data : null;
 
-    return response.invoke.apply(response, arguments);
+    return this;
 };
 
 /**
  *
- * @param {Function} method
- * @param {Array} [args=[]]
  * @returns {Response}
  */
-Response.fApply = function (method, args) {
-    var response = new Response();
-
-    return response.invoke.apply(response, [method].concat(isArray(args) ? args : []));
+Response.prototype.clear = function () {
+    return Response.call(this);
 };
 
-inherits(Response, new EventEmitter());
+/**
+ *
+ * @param {Function} callback
+ * @param {Object} [context=this]
+ * @returns {Function}
+ */
+Response.prototype.bind = function (callback, context) {
+    // Fix:
+    // Did not inline isFunction called from Response.bind (target requires context change).
+    if (typeof callback !== 'function') {
+        throw new Error('Callback is not a function');
+    }
+
+    var _context = context == null ? this : context;
+
+    function responseCallback() {
+        callback.apply(_context, arguments);
+    }
+
+    return responseCallback;
+};
 
 /**
  *
@@ -242,29 +282,36 @@ Response.prototype.once = function (type, listener, context) {
 };
 
 /**
- * @param {string} type Тип события.
- * @param {...*} [args] Аргументы, передаваемые в обработчик события.
- * @returns {Boolean}
+ *
+ * @returns {Response}
  */
-Response.prototype.emit = function (type, args) {
-    var reason;
-    var result = false;
+Response.prototype.final = function () {
+    EventEmitter.stop(this);
 
-    try {
-        result = emit.apply(this, arguments);
-    } catch (error) {
-        reason = error;
+    return this;
+};
+
+
+/**
+ *
+ * @returns {Response}
+ */
+Response.prototype.ready = function () {
+    if (this.state === this.STATE_PENDING) {
+        this.emit(this.EVENT_READY);
     }
 
-    if (reason) {
-        if (this.state === this.STATE_REJECTED) {
-            this.reason = toError(reason);
-        } else {
-            this.reject(reason);
-        }
-    }
+    return this;
+};
 
-    return result;
+/**
+ *
+ * @param {Function} listener
+ * @param {Object} [context=this]
+ * @returns {Response}
+ */
+Response.prototype.onReady = function (listener, context) {
+    return this.on(this.EVENT_READY, listener, context);
 };
 
 /**
@@ -297,7 +344,7 @@ Response.prototype.setState = function (state, args) {
  *
  * @param {String|Number|Event} state
  * @param {Function} [listener]
- * @param {Object|null} [context=this]
+ * @param {Object} [context=this]
  * @returns {Response}
  */
 Response.prototype.onState = function (state, listener, context) {
@@ -307,7 +354,7 @@ Response.prototype.onState = function (state, listener, context) {
     if (this.state === event.type) {
         EventEmitter.event = event;
 
-        event.listener.apply(typeof event.context === 'object' ? event.context : this, this.stateData);
+        event.listener.apply(event.context == null ? this : event.context, this.stateData);
 
         EventEmitter.event = currentEvent;
 
@@ -325,11 +372,37 @@ Response.prototype.onState = function (state, listener, context) {
  *
  * @param {String|Number|Event} state
  * @param {Function} [listener]
- * @param {Object|null} [context=this]
+ * @param {Object} [context=this]
  * @returns {Response}
  */
 Response.prototype.onceState = function (state, listener, context) {
     return this.onState(new Event(state, listener, context, true));
+};
+
+/**
+ * @param {string} type Тип события.
+ * @param {...*} [args] Аргументы, передаваемые в обработчик события.
+ * @returns {Boolean}
+ */
+Response.prototype.emit = function (type, args) {
+    var reason;
+    var result = false;
+
+    try {
+        result = emit.apply(this, arguments);
+    } catch (error) {
+        reason = error;
+    }
+
+    if (reason) {
+        if (this.state === this.STATE_REJECTED) {
+            this.reason = toError(reason);
+        } else {
+            this.reject(reason);
+        }
+    }
+
+    return result;
 };
 
 /**
@@ -397,6 +470,19 @@ Response.prototype.reject = function (reason) {
 
 /**
  *
+ * @param {*} progress
+ * @returns {Response}
+ */
+Response.prototype.progress = function (progress) {
+    if (this.state === this.STATE_PENDING) {
+        this.emit(this.EVENT_PROGRESS, progress);
+    }
+
+    return this;
+};
+
+/**
+ *
  * @returns {Boolean}
  */
 Response.prototype.isResolved = function () {
@@ -411,14 +497,25 @@ Response.prototype.isRejected = function () {
     return this.state === this.STATE_REJECTED;
 };
 
-
 /**
  *
+ * @param {Function} [onResolve]
+ * @param {Function} [onReject]
+ * @param {Function} [onProgress]
+ * @param {Object} [context=this]
  * @returns {Response}
  */
-Response.prototype.ready = function () {
-    if (this.state === this.STATE_PENDING) {
-        this.emit(this.EVENT_READY);
+Response.prototype.then = function (onResolve, onReject, onProgress, context) {
+    if (isFunction(onResolve)) {
+        this.onceState(this.STATE_RESOLVED, onResolve, context);
+    }
+
+    if (isFunction(onReject)) {
+        this.onceState(this.STATE_REJECTED, onReject, context);
+    }
+
+    if (isFunction(onProgress)) {
+        this.on(this.EVENT_PROGRESS, onProgress, context);
     }
 
     return this;
@@ -426,233 +523,47 @@ Response.prototype.ready = function () {
 
 /**
  *
- * @param {*} progress
+ * @param {Function} listener
+ * @param {Object} [context=this]
  * @returns {Response}
  */
-Response.prototype.progress = function (progress) {
-    if (this.state === this.STATE_PENDING) {
-        this.emit(this.EVENT_PROGRESS, progress);
-    }
+Response.prototype.always = function (listener, context) {
+    this
+        .onceState(this.STATE_RESOLVED, listener, context)
+        .onceState(this.STATE_REJECTED, listener, context)
+        .on(this.EVENT_PROGRESS, listener, context);
 
     return this;
 };
 
 /**
  *
+ * @param {Function} listener
+ * @param {Object} [context=this]
  * @returns {Response}
  */
-Response.prototype.final = function () {
-    EventEmitter.stop(this);
-
-    return this;
+Response.prototype.onResolve = function (listener, context) {
+    return this.onceState(this.STATE_RESOLVED, listener, context);
 };
 
 /**
  *
+ * @param {Function} listener
+ * @param {Object} [context=this]
  * @returns {Response}
  */
-Response.prototype.clear = function () {
-    this.pending();
-    this.removeAllListeners();
-
-    return Response.call(this);
+Response.prototype.onReject = function (listener, context) {
+    return this.onceState(this.STATE_REJECTED, listener, context);
 };
 
 /**
  *
- * @param {Function} callback
- * @param {Object|null} [context=this]
- */
-Response.prototype.spread = function (callback, context) {
-    callback.apply(typeof context === 'object' ? context : this, this.result);
-
-    return this;
-};
-
-/**
- *
- * @example
- * new Response()
- *   .resolve(1, 2)
- *   .map(['foo', 'bar']); // {foo: 1, bar: 2}
- *
- * @param {Array} [keys=[]]
- * @returns {Object}
- */
-Response.prototype.map = function (keys) {
-    if (!isArray(keys)) {
-        return {};
-    }
-
-    var result = this.result;
-    var length = keys.length;
-    var index = 0;
-    var hash = {};
-
-    while (index < length) {
-        hash[keys[index]] = result[index++];
-    }
-
-    return hash;
-};
-
-/**
- *
- * @param {Object|null} [context]
- * @param {Function} [callback]
+ * @param {Function} listener
+ * @param {Object} [context=this]
  * @returns {Response}
  */
-Response.prototype.bind = function (context, callback) {
-    if (isFunction(callback) || !isFunction(this.callback)) {
-        this.setCallback(callback);
-    }
-
-    if (typeof context === 'object') {
-        this.context = context;
-    }
-
-    return this;
-};
-
-/**
- *
- * @example
- * Response
- *   // Open file.txt;
- *   .fCall(fs.open, '/file.txt', 'r')
- *
- *   // File is opened, read first 10 bytes
- *   .then(function (fd) {
- *     this
- *       .setData(fd) // Save file descriptor
- *       .invoke(fs.read, fd, new Buffer(), 0, 10, null);
- *   })
- *
- *   // File is read
- *   .then(function (bytesRead, buffer) {
- *     this.invoke(fs.close, this.data);
- *   })
- *
- *   // File is closed
- *   .then(function (fd) {});
- *
- * @param {Function|String} method
- * @param {...*} [args]
- * @throws {Error} Бросает исключение, если методом является строка и response не привязан к объекту, либо метод не является функцией.
- * @returns {Response}
- */
-Response.prototype.invoke = function (method, args) {
-    var context = this.context;
-    var arg;
-    var index;
-    var _method = method;
-
-    if (isString(method)) {
-        if (context == null) {
-            throw new Error('Context object is not defined. Use the Response#bind method.');
-        }
-
-        _method = context[method];
-    }
-
-    if (isFunction(_method)) {
-        index = arguments.length;
-        arg = new Array(index--);
-        arg[index] = this.getCallback();
-
-        while (index--) {
-            arg[index] = arguments[index + 1];
-        }
-
-        if (this.state !== this.STATE_PENDING) {
-            this.pending();
-        }
-
-        try {
-            _method.apply(context, arg);
-        } catch (error) {
-            this.reject(error);
-        }
-    } else {
-        throw new Error('method is not a function');
-    }
-
-    return this;
-};
-
-/**
- *
- * @param {*} [data=null]
- * @returns {Response}
- */
-Response.prototype.setData = function (data) {
-    this.data = arguments.length ? data : null;
-
-    return this;
-};
-
-/**
- * @example
- * var Response = require('Response');
- * var r = new Response()
- *
- * r.setCallback(function (data, textStatus, jqXHR) {
- *   if (data && !data.error) {
- *      r.resolve(data.result);
- *   } else {
- *      r.reject(data.error);
- *   }
- * });
- *
- * $.getJSON('ajax/test.json', r.callback);
- *
- * @param {Function} [callback={Function}]
- * @returns {Function}
- */
-Response.prototype.setCallback = function (callback) {
-    // Fix:
-    // Did not inline isFunction called from Response.setCallback (target requires context change).
-    if (typeof callback === 'function') {
-        this.callback = callback;
-    } else {
-        var self = this;
-
-        this.callback = function responseCallback(error, results) {
-            var index = arguments.length;
-            var args;
-
-            if (error == null) {
-                if (index && --index) {
-                    args = new Array(index);
-
-                    while (index--) {
-                        args[index] = arguments[index + 1];
-                    }
-
-                    self.resolve.apply(self, args);
-                } else {
-                    self.resolve();
-                }
-            } else {
-                self.reject(error);
-            }
-
-            self = null;
-        }
-    }
-
-    return this.callback;
-};
-
-/**
- * @example
- * var r = new Response();
- * fs.open('/file.txt', 'r', r.getCallback());
- *
- * @returns {Function}
- */
-Response.prototype.getCallback = function () {
-    return isFunction(this.callback) ? this.callback : this.setCallback();
+Response.prototype.onProgress = function (listener, context) {
+    return this.on(this.EVENT_PROGRESS, listener, context);
 };
 
 /**
@@ -733,23 +644,110 @@ Response.prototype.done = function () {
 
 /**
  *
- * @param {Function} [onResolve]
- * @param {Function} [onReject]
- * @param {Function} [onProgress]
+ * @param {Object|null} [context]
+ */
+Response.prototype.setContext = function (context) {
+    if (typeof context === 'object') {
+        this.context = context;
+    }
+};
+
+/**
+ * @example
+ * var Response = require('Response');
+ * var r = new Response()
+ *
+ * function callback (data, textStatus, jqXHR) {
+ *   if (data && !data.error) {
+ *      this.resolve(data.result);
+ *   } else {
+ *      this.reject(data.error);
+ *   }
+ * }
+ *
+ * r.bind(callback);
+ *
+ * $.getJSON('ajax/test.json', r.callback);
+ *
+ * @param {Function} [callback=Response.callback]
  * @param {Object} [context=this]
+ * @returns {Function}
+ */
+Response.prototype.makeCallback = function (callback, context) {
+    return this.callback = this.bind(typeof callback === 'function' ? callback : Response.callback, context);
+};
+
+/**
+ * @example
+ * var r = new Response();
+ * fs.open('/file.txt', 'r', r.getCallback());
+ *
+ * @returns {Function}
+ */
+Response.prototype.getCallback = function () {
+    return isFunction(this.callback) ? this.callback : this.makeCallback();
+};
+
+/**
+ *
+ * @example
+ * Response
+ *   // Open file.txt;
+ *   .fCall(fs.open, '/file.txt', 'r')
+ *
+ *   // File is opened, read first 10 bytes
+ *   .then(function (fd) {
+ *     this
+ *       .setData(fd) // Save file descriptor
+ *       .invoke(fs.read, fd, new Buffer(), 0, 10, null);
+ *   })
+ *
+ *   // File is read
+ *   .then(function (bytesRead, buffer) {
+ *     this.invoke(fs.close, this.data);
+ *   })
+ *
+ *   // File is closed
+ *   .then(function (fd) {});
+ *
+ * @param {Function|String} method
+ * @param {...*} [args]
+ * @throws {Error} Бросает исключение, если методом является строка и response не привязан к объекту, либо метод не является функцией.
  * @returns {Response}
  */
-Response.prototype.then = function (onResolve, onReject, onProgress, context) {
-    if (isFunction(onResolve)) {
-        this.onceState(this.STATE_RESOLVED, onResolve, context);
+Response.prototype.invoke = function (method, args) {
+    var context = this.context == null ? this : this.context;
+    var arg;
+    var index;
+    var _method = method;
+
+    if (isString(method)) {
+        if (context == null) {
+            throw new Error('Context object is not defined. Use the Response#setContext method.');
+        }
+
+        _method = context[method];
     }
 
-    if (isFunction(onReject)) {
-        this.onceState(this.STATE_REJECTED, onReject, context);
-    }
+    if (isFunction(_method)) {
+        index = arguments.length - 1;
+        arg = new Array(index);
 
-    if (isFunction(onProgress)) {
-        this.on(this.EVENT_PROGRESS, onProgress, context);
+        while (index--) {
+            arg[index] = arguments[index + 1];
+        }
+
+        if (this.state !== this.STATE_PENDING) {
+            this.pending();
+        }
+
+        try {
+            _method.apply(context, arg);
+        } catch (error) {
+            this.reject(error);
+        }
+    } else {
+        throw new Error('Method is not a function.');
     }
 
     return this;
@@ -757,57 +755,40 @@ Response.prototype.then = function (onResolve, onReject, onProgress, context) {
 
 /**
  *
- * @param {Function} listener
- * @param {Object|null} [context=this]
- * @returns {Response}
+ * @param {Function} callback
+ * @param {Object} [context=this]
  */
-Response.prototype.always = function (listener, context) {
-    this
-        .onceState(this.STATE_RESOLVED, listener, context)
-        .onceState(this.STATE_REJECTED, listener, context)
-        .on(this.EVENT_PROGRESS, listener, context);
+Response.prototype.spread = function (callback, context) {
+    callback.apply(context == null ? this : context, this.result);
 
     return this;
 };
 
 /**
  *
- * @param {Function} listener
- * @param {Object|null} [context=this]
- * @returns {Response}
- */
-Response.prototype.onResolve = function (listener, context) {
-    return this.onceState(this.STATE_RESOLVED, listener, context);
-};
-
-/**
+ * @example
+ * new Response()
+ *   .resolve(1, 2)
+ *   .map(['foo', 'bar']); // {foo: 1, bar: 2}
  *
- * @param {Function} listener
- * @param {Object|null} [context=this]
- * @returns {Response}
+ * @param {Array} [keys=[]]
+ * @returns {Object}
  */
-Response.prototype.onReject = function (listener, context) {
-    return this.onceState(this.STATE_REJECTED, listener, context);
-};
+Response.prototype.map = function (keys) {
+    if (!isArray(keys)) {
+        return {};
+    }
 
-/**
- *
- * @param {Function} listener
- * @param {Object|null} [context=this]
- * @returns {Response}
- */
-Response.prototype.onReady = function (listener, context) {
-    return this.on(this.EVENT_READY, listener, context);
-};
+    var result = this.result;
+    var length = keys.length;
+    var index = 0;
+    var hash = {};
 
-/**
- *
- * @param {Function} listener
- * @param {Object|null} [context=this]
- * @returns {Response}
- */
-Response.prototype.onProgress = function (listener, context) {
-    return this.on(this.EVENT_PROGRESS, listener, context);
+    while (index < length) {
+        hash[keys[index]] = result[index++];
+    }
+
+    return hash;
 };
 
 /**
@@ -880,6 +861,62 @@ Queue.isQueue = function (object) {
 };
 
 inherits(Queue, new Response());
+
+/**
+ *
+ * @returns {Queue}
+ */
+Queue.prototype.clear = function () {
+    var result = this.result;
+    var length = result.length;
+    var index = 0;
+    var response;
+
+    while (index < length) {
+        response = result[index++];
+
+        if (Response.isResponse(response)) {
+            response.clear();
+        }
+    }
+
+    result.length = 0;
+
+    Queue.call(this);
+
+    return this;
+};
+
+/**
+ *
+ * @param {Array} [keys=[]]
+ * @returns {Object}
+ */
+Queue.prototype.map = function (keys) {
+    if (!isArray(keys)) {
+        return {};
+    }
+
+    var result = this.result;
+    var key;
+    var length = keys.length;
+    var index = 0;
+    var hash = {};
+    var item;
+
+    while (index < length) {
+        item = result[index++];
+        key = keys[index];
+
+        if (Response.isResponse(item)) {
+            item = item.map(key);
+        }
+
+        hash[key] = item;
+    }
+
+    return hash;
+};
 
 /**
  *
@@ -972,76 +1009,8 @@ Queue.prototype.push = function (args) {
 
 /**
  *
- * @returns {Queue}
- */
-Queue.prototype.clear = function () {
-    var result = this.result;
-    var length = result.length;
-    var index = 0;
-    var response;
-
-    while (index < length) {
-        response = result[index++];
-
-        if (Response.isResponse(response)) {
-            response.clear();
-        }
-    }
-
-    result.length = 0;
-
-    // Achtung! Copy-paste from Response#clear, reason: fixed deoptimization for V8.
-    this.pending();
-    this.removeAllListeners();
-    Queue.call(this);
-
-    return this;
-};
-
-/**
- *
- * @param {Array} [keys=[]]
- * @returns {Object}
- */
-Queue.prototype.map = function (keys) {
-    if (!isArray(keys)) {
-        return {};
-    }
-
-    var result = this.result;
-    var key;
-    var length = keys.length;
-    var index = 0;
-    var hash = {};
-    var item;
-
-    while (index < length) {
-        item = result[index++];
-        key = keys[index];
-
-        if (Response.isResponse(item)) {
-            item = item.map(key);
-        }
-
-        hash[key] = item;
-    }
-
-    return hash;
-};
-
-/**
- *
- * @returns {Queue}
- */
-Queue.prototype.strict = function () {
-    this.once(this.EVENT_REJECT_ITEM, this.reject);
-    return this;
-};
-
-/**
- *
  * @param {Function} listener
- * @param {Object|null} [context=this]
+ * @param {Object} [context=this]
  * @returns {Queue}
  */
 Queue.prototype.onStart = function (listener, context) {
@@ -1052,7 +1021,7 @@ Queue.prototype.onStart = function (listener, context) {
 /**
  *
  * @param {Function} listener
- * @param {Object|null} [context=this]
+ * @param {Object} [context=this]
  * @returns {Queue}
  */
 Queue.prototype.onStop = function (listener, context) {
@@ -1063,7 +1032,7 @@ Queue.prototype.onStop = function (listener, context) {
 /**
  *
  * @param {Function} listener
- * @param {Object|null} [context=this]
+ * @param {Object} [context=this]
  * @returns {Queue}
  */
 Queue.prototype.onResolveItem = function (listener, context) {
@@ -1074,11 +1043,20 @@ Queue.prototype.onResolveItem = function (listener, context) {
 /**
  *
  * @param {Function} listener
- * @param {Object|null} [context=this]
+ * @param {Object} [context=this]
  * @returns {Queue}
  */
 Queue.prototype.onRejectItem = function (listener, context) {
     this.on(this.EVENT_REJECT_ITEM, listener, context);
+    return this;
+};
+
+/**
+ *
+ * @returns {Queue}
+ */
+Queue.prototype.strict = function () {
+    this.once(this.EVENT_REJECT_ITEM, this.reject);
     return this;
 };
 
