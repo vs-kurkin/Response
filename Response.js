@@ -285,17 +285,6 @@ Response.prototype.once = function (type, listener, context) {
  *
  * @returns {Response}
  */
-Response.prototype.final = function () {
-    EventEmitter.stop(this);
-
-    return this;
-};
-
-
-/**
- *
- * @returns {Response}
- */
 Response.prototype.ready = function () {
     if (this.state === this.STATE_PENDING) {
         this.emit(this.EVENT_READY);
