@@ -441,7 +441,7 @@ Response.prototype.resolve = function (results) {
     this.reason = null;
 
     if (this.state !== this.STATE_RESOLVED) {
-        EventEmitter.stop(this);
+        this.stopEmit();
     }
 
     if (index) {
@@ -468,7 +468,7 @@ Response.prototype.reject = function (reason) {
     this.result.length = 0;
 
     if (this.state !== this.STATE_REJECTED) {
-        EventEmitter.stop(this);
+        this.stopEmit();
     }
 
     if (arguments.length && reason != null) {
