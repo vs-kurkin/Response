@@ -21,36 +21,6 @@ function Response(wrapper) {
     EventEmitter.call(this);
 
     /**
-     * @type {String}
-     * @default 'pending'
-     */
-    this.STATE_PENDING = 'pending';
-
-    /**
-     * @type {String}
-     * @default 'resolve'
-     */
-    this.STATE_RESOLVED = 'resolve';
-
-    /**
-     * @type {String}
-     * @default 'error'
-     */
-    this.STATE_REJECTED = 'reject';
-
-    /**
-     * @type {String}
-     * @default 'ready'
-     */
-    this.EVENT_READY = 'ready';
-
-    /**
-     * @type {String}
-     * @default 'progress'
-     */
-    this.EVENT_PROGRESS = 'progress';
-
-    /**
      *
      * @type {*}
      * @default null
@@ -58,6 +28,7 @@ function Response(wrapper) {
     this.data = null;
 
     /**
+     *
      * @readonly
      * @type {String}
      * @default 'pending'
@@ -65,6 +36,7 @@ function Response(wrapper) {
     this.state = 'pending';
 
     /**
+     *
      * @readonly
      * @type {Array}
      * @default []
@@ -101,7 +73,7 @@ function Response(wrapper) {
      */
     this.callback = null;
 
-    if (isFunction(wrapper)) {
+    if (typeof wrapper === 'function') {
         this.invoke(wrapper);
     }
 
@@ -230,6 +202,42 @@ Response.strictQueue = function (args) {
 inherits(Response, new EventEmitter());
 
 /**
+ * @type {String}
+ * @default 'pending'
+ */
+Response.prototype.STATE_PENDING = 'pending';
+
+/**
+ * @type {String}
+ * @default 'resolve'
+ */
+Response.prototype.STATE_RESOLVED = 'resolve';
+
+/**
+ * @type {String}
+ * @default 'error'
+ */
+Response.prototype.STATE_REJECTED = 'reject';
+
+/**
+ * @type {String}
+ * @default 'changeState'
+ */
+Response.prototype.EVENT_CHANGE_STATE = 'changeState';
+
+/**
+ * @type {String}
+ * @default 'ready'
+ */
+Response.prototype.EVENT_READY = 'ready';
+
+/**
+ * @type {String}
+ * @default 'progress'
+ */
+Response.prototype.EVENT_PROGRESS = 'progress';
+
+/**
  *
  * @param {*} [data=null]
  * @returns {Response}
@@ -255,8 +263,6 @@ Response.prototype.clear = function () {
  * @returns {Function}
  */
 Response.prototype.bind = function (callback, context) {
-    // Fix:
-    // Did not inline isFunction called from Response.bind (target requires context change).
     if (typeof callback !== 'function') {
         throw new Error('Callback is not a function');
     }
@@ -268,17 +274,6 @@ Response.prototype.bind = function (callback, context) {
     }
 
     return responseCallback;
-};
-
-/**
- *
- * @param {String} type
- * @param {Function} listener
- * @param {Object} [context=this]
- * @returns {Response}
- */
-Response.prototype.once = function (type, listener, context) {
-    return this.on(new EventEmitter.Event(type, listener, context, true));
 };
 
 /**
@@ -295,7 +290,7 @@ Response.prototype.ready = function () {
 
 /**
  *
- * @param {Function} listener
+ * @param {Function|EventEmitter} listener
  * @param {Object} [context=this]
  * @returns {Response}
  */
@@ -310,20 +305,25 @@ Response.prototype.onReady = function (listener, context) {
  */
 Response.prototype.setState = function (state, args) {
     var index = arguments.length;
+    var hasListeners;
 
     if (index-- && this.state !== state) {
         this.state = state;
         this.stateData.length = index;
+
+        hasListeners = this._events && this._events[state];
 
         if (index--) {
             while (index--) {
                 this.stateData[index] = arguments[index + 1];
             }
 
-            this.emit.apply(this, arguments);
-        } else {
+            hasListeners && this.emit.apply(this, arguments);
+        } else if (hasListeners) {
             this.emit(state);
         }
+
+        this.emit(this.EVENT_CHANGE_STATE, state);
     }
 
     return this;
@@ -332,7 +332,7 @@ Response.prototype.setState = function (state, args) {
 /**
  *
  * @param {String|Number|Event} state
- * @param {Function} [listener]
+ * @param {Function|EventEmitter} [listener]
  * @param {Object} [context=this]
  * @returns {Response}
  */
@@ -360,12 +360,33 @@ Response.prototype.onState = function (state, listener, context) {
 /**
  *
  * @param {String|Number|Event} state
- * @param {Function} [listener]
+ * @param {Function|EventEmitter} [listener]
  * @param {Object} [context=this]
  * @returns {Response}
  */
 Response.prototype.onceState = function (state, listener, context) {
-    return this.onState(new Event(state, listener, context, true));
+    var event;
+
+    if (state instanceof Event) {
+        state.isOnce = true;
+        event = state;
+    } else {
+        event = new Event(state, listener, context, true);
+    }
+
+    return this.onState(event);
+};
+
+/**
+ *
+ * @param {Function|EventEmitter} listener
+ * @param {Object} [context=this]
+ * @returns {Response}
+ */
+Response.prototype.onChangeState = function (listener, context) {
+    this.on(this.EVENT_CHANGE_STATE, listener, context);
+
+    return this;
 };
 
 /**
@@ -378,7 +399,9 @@ Response.prototype.emit = function (type, args) {
     var result = false;
 
     try {
-        result = emit.apply(this, arguments);
+        if (this._events[type]) {
+            result = emit.apply(this, arguments);
+        }
     } catch (error) {
         reason = error;
     }
@@ -488,22 +511,22 @@ Response.prototype.isRejected = function () {
 
 /**
  *
- * @param {Function} [onResolve]
- * @param {Function} [onReject]
- * @param {Function} [onProgress]
+ * @param {Function|EventEmitter} [onResolve]
+ * @param {Function|EventEmitter} [onReject]
+ * @param {Function|EventEmitter} [onProgress]
  * @param {Object} [context=this]
  * @returns {Response}
  */
 Response.prototype.then = function (onResolve, onReject, onProgress, context) {
-    if (isFunction(onResolve)) {
+    if (onResolve != null) {
         this.onceState(this.STATE_RESOLVED, onResolve, context);
     }
 
-    if (isFunction(onReject)) {
+    if (onReject != null) {
         this.onceState(this.STATE_REJECTED, onReject, context);
     }
 
-    if (isFunction(onProgress)) {
+    if (onProgress != null) {
         this.on(this.EVENT_PROGRESS, onProgress, context);
     }
 
@@ -512,7 +535,7 @@ Response.prototype.then = function (onResolve, onReject, onProgress, context) {
 
 /**
  *
- * @param {Function} listener
+ * @param {Function|EventEmitter} listener
  * @param {Object} [context=this]
  * @returns {Response}
  */
@@ -527,7 +550,7 @@ Response.prototype.always = function (listener, context) {
 
 /**
  *
- * @param {Function} listener
+ * @param {Function|EventEmitter} listener
  * @param {Object} [context=this]
  * @returns {Response}
  */
@@ -537,7 +560,7 @@ Response.prototype.onResolve = function (listener, context) {
 
 /**
  *
- * @param {Function} listener
+ * @param {Function|EventEmitter} listener
  * @param {Object} [context=this]
  * @returns {Response}
  */
@@ -547,7 +570,7 @@ Response.prototype.onReject = function (listener, context) {
 
 /**
  *
- * @param {Function} listener
+ * @param {Function|EventEmitter} listener
  * @param {Object} [context=this]
  * @returns {Response}
  */
@@ -674,7 +697,7 @@ Response.prototype.makeCallback = function (callback, context) {
  * @returns {Function}
  */
 Response.prototype.getCallback = function () {
-    return isFunction(this.callback) ? this.callback : this.makeCallback();
+    return typeof this.callback === 'function' ? this.callback : this.makeCallback();
 };
 
 /**
@@ -710,7 +733,7 @@ Response.prototype.invoke = function (method, args) {
     var index;
     var _method = method;
 
-    if (isString(method)) {
+    if ((typeof _method === 'string' || getType(_method) === 'String')) {
         if (context == null) {
             throw new Error('Context object is not defined. Use the Response#setContext method.');
         }
@@ -718,7 +741,7 @@ Response.prototype.invoke = function (method, args) {
         _method = context[method];
     }
 
-    if (isFunction(_method)) {
+    if (typeof _method === 'function') {
         index = arguments.length - 1;
         arg = new Array(index);
 
@@ -791,30 +814,6 @@ function Queue(stack, start) {
     Response.call(this);
 
     /**
-     * @default 'start'
-     * @type {String}
-     */
-    this.EVENT_START = 'start';
-
-    /**
-     * @default 'stop'
-     * @type {String}
-     */
-    this.EVENT_STOP = 'stop';
-
-    /**
-     * @default 'resolveItem'
-     * @type {String}
-     */
-    this.EVENT_RESOLVE_ITEM = 'resolveItem';
-
-    /**
-     * @default 'rejectItem'
-     * @type {String}
-     */
-    this.EVENT_REJECT_ITEM = 'rejectItem';
-
-    /**
      * @readonly
      * @type {Array}
      */
@@ -825,7 +824,7 @@ function Queue(stack, start) {
      * @default true
      * @type {Boolean}
      */
-    this.stopped = !toBoolean(start, false);
+    this.stopped = typeof start === 'boolean' || getType(start) === 'Boolean' ? start.valueOf() : true;
 
     /**
      * @readonly
@@ -850,6 +849,30 @@ Queue.isQueue = function (object) {
 };
 
 inherits(Queue, new Response());
+
+/**
+ * @default 'start'
+ * @type {String}
+ */
+Queue.prototype.EVENT_START = 'start';
+
+/**
+ * @default 'stop'
+ * @type {String}
+ */
+Queue.prototype.EVENT_STOP = 'stop';
+
+/**
+ * @default 'resolveItem'
+ * @type {String}
+ */
+Queue.prototype.EVENT_RESOLVE_ITEM = 'resolveItem';
+
+/**
+ * @default 'rejectItem'
+ * @type {String}
+ */
+Queue.prototype.EVENT_REJECT_ITEM = 'rejectItem';
 
 /**
  *
@@ -931,7 +954,7 @@ Queue.prototype.start = function () {
         return this;
     }
 
-    if (isFunction(item)) {
+    if (typeof item === 'function') {
         try {
             if (Response.isResponse(this.item) && this.item.result.length) {
                 item = item.apply(this, this.item.result);
@@ -998,7 +1021,7 @@ Queue.prototype.push = function (args) {
 
 /**
  *
- * @param {Function} listener
+ * @param {Function|EventEmitter} listener
  * @param {Object} [context=this]
  * @returns {Queue}
  */
@@ -1009,7 +1032,7 @@ Queue.prototype.onStart = function (listener, context) {
 
 /**
  *
- * @param {Function} listener
+ * @param {Function|EventEmitter} listener
  * @param {Object} [context=this]
  * @returns {Queue}
  */
@@ -1020,7 +1043,7 @@ Queue.prototype.onStop = function (listener, context) {
 
 /**
  *
- * @param {Function} listener
+ * @param {Function|EventEmitter} listener
  * @param {Object} [context=this]
  * @returns {Queue}
  */
@@ -1031,7 +1054,7 @@ Queue.prototype.onResolveItem = function (listener, context) {
 
 /**
  *
- * @param {Function} listener
+ * @param {Function|EventEmitter} listener
  * @param {Object} [context=this]
  * @returns {Queue}
  */
@@ -1045,7 +1068,7 @@ Queue.prototype.onRejectItem = function (listener, context) {
  * @returns {Queue}
  */
 Queue.prototype.strict = function () {
-    this.once(this.EVENT_REJECT_ITEM, this.reject);
+    this.on(this.EVENT_REJECT_ITEM, this.reject);
     return this;
 };
 
@@ -1102,20 +1125,8 @@ function getType(object) {
     return toString.call(object).slice(8, -1);
 }
 
-function isString(value) {
-    return ((typeof value === 'string') || getType(value) === 'String') && value != '';
-}
-
 function isArray(value) {
     return !(value == null || getType(value) !== 'Array');
-}
-
-function isFunction(value) {
-    return typeof value === 'function';
-}
-
-function toBoolean(value, defaultValue) {
-    return typeof value === 'boolean' || getType(value) === 'Boolean' ? value.valueOf() : defaultValue;
 }
 
 function toError(value) {
