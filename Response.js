@@ -281,7 +281,7 @@ Response.prototype.bind = function (callback, context) {
  * @returns {Response}
  */
 Response.prototype.ready = function () {
-    if (this.state === this.STATE_PENDING) {
+    if (this.state === this.STATE_PENDING && this._events && this._events[this.EVENT_READY]) {
         this.emit(this.EVENT_READY);
     }
 
@@ -305,13 +305,16 @@ Response.prototype.onReady = function (listener, context) {
  */
 Response.prototype.setState = function (state, args) {
     var index = arguments.length;
+    var _state = this.state;
+    var _events;
     var hasListeners;
 
-    if (index-- && this.state !== state) {
+    if (index-- && _state !== state) {
+        _events = this._events;
+        hasListeners = _events && _events[state];
+
         this.state = state;
         this.stateData.length = index;
-
-        hasListeners = this._events && this._events[state];
 
         if (index--) {
             while (index--) {
@@ -323,7 +326,9 @@ Response.prototype.setState = function (state, args) {
             this.emit(state);
         }
 
-        this.emit(this.EVENT_CHANGE_STATE, state);
+        if (_events && _events[this.EVENT_CHANGE_STATE] && this.state === state) {
+            this.emit(this.EVENT_CHANGE_STATE, _state);
+        }
     }
 
     return this;
@@ -486,7 +491,7 @@ Response.prototype.reject = function (reason) {
  * @returns {Response}
  */
 Response.prototype.progress = function (progress) {
-    if (this.state === this.STATE_PENDING) {
+    if (this.state === this.STATE_PENDING && this._events && this._events[this.EVENT_PROGRESS]) {
         this.emit(this.EVENT_PROGRESS, progress);
     }
 
@@ -542,8 +547,7 @@ Response.prototype.then = function (onResolve, onReject, onProgress, context) {
 Response.prototype.always = function (listener, context) {
     this
         .onceState(this.STATE_RESOLVED, listener, context)
-        .onceState(this.STATE_REJECTED, listener, context)
-        .on(this.EVENT_PROGRESS, listener, context);
+        .onceState(this.STATE_REJECTED, listener, context);
 
     return this;
 };
@@ -821,23 +825,12 @@ function Queue(stack, start) {
 
     /**
      * @readonly
-     * @default true
-     * @type {Boolean}
-     */
-    this.stopped = typeof start === 'boolean' || getType(start) === 'Boolean' ? start.valueOf() : true;
-
-    /**
-     * @readonly
      * @default null
      * @type {*}
      */
     this.item = null;
 
-    this
-        .onState(this.STATE_RESOLVED, this.stop)
-        .onState(this.STATE_REJECTED, this.stop);
-
-    if (this.stopped === false) {
+    if (typeof start === 'boolean' || getType(start) === 'Boolean' ? start.valueOf() : false) {
         this.start();
     }
 
@@ -854,13 +847,7 @@ inherits(Queue, new Response());
  * @default 'start'
  * @type {String}
  */
-Queue.prototype.EVENT_START = 'start';
-
-/**
- * @default 'stop'
- * @type {String}
- */
-Queue.prototype.EVENT_STOP = 'stop';
+Queue.prototype.STATE_START = 'start';
 
 /**
  * @default 'resolveItem'
@@ -935,61 +922,60 @@ Queue.prototype.map = function (keys) {
  * @returns {Queue}
  */
 Queue.prototype.start = function () {
-    var stack = this.stack,
-        item;
+    var stack = this.stack;
+    var item = this.item;
 
     if (stack.length === 0) {
-        if (this.stopped === false) {
+        if (this.state !== this.STATE_START) {
             this.resolve.apply(this, this.result);
         }
 
         return this;
     }
 
-    this.stopped = false;
+    this.item = stack.shift();
+    this.setState(this.STATE_START);
 
-    item = stack.shift();
-
-    if (this.state !== this.STATE_PENDING) {
+    if (this.state !== this.STATE_START) {
         return this;
     }
 
-    if (typeof item === 'function') {
+    if (typeof this.item === 'function') {
         try {
-            if (Response.isResponse(this.item) && this.item.result.length) {
-                item = item.apply(this, this.item.result);
+            if (Response.isResponse(item) && item.result.length) {
+                this.item = item.apply(this, item.result);
             } else {
-                item = item.call(this);
+                this.item = item.call(this);
             }
         } catch (error) {
             this.reject(error);
             return this;
         }
 
-        if (this.stopped === true) {
+        if (this.state !== this.STATE_START) {
             return this;
         }
     }
+
+    item = this.item;
 
     if (item === this) {
         return this.start();
     }
 
-    this.item = item;
-    this.emit(this.EVENT_START, item);
-
-    if (this.stopped === true) {
-        return this;
-    }
+    this.result.push(item);
 
     if (Response.isResponse(item)) {
         item
             .ready()
-            .onceState(this.STATE_RESOLVED, onResultItem, this)
-            .onceState(this.STATE_REJECTED, onResultItem, this);
+
+            .onceState(item.STATE_RESOLVED, emitEventItem, this)
+            .onceState(item.STATE_RESOLVED, this.start, this)
+
+            .onceState(item.STATE_REJECTED, emitEventItem, this)
+            .onceState(item.STATE_REJECTED, this.start, this);
     } else {
-        this.result.push(item);
-        return this.start();
+        this.start();
     }
 
     return this;
@@ -1001,11 +987,7 @@ Queue.prototype.start = function () {
  */
 Queue.prototype.stop = function () {
     this.item = null;
-
-    if (this.stopped === false) {
-        this.stopped = true;
-        this.emit(this.EVENT_STOP);
-    }
+    this.setState(this.STATE_PENDING);
 
     return this;
 };
@@ -1016,28 +998,6 @@ Queue.prototype.stop = function () {
  */
 Queue.prototype.push = function (args) {
     push.apply(this.stack, arguments);
-    return this;
-};
-
-/**
- *
- * @param {Function|EventEmitter} listener
- * @param {Object} [context=this]
- * @returns {Queue}
- */
-Queue.prototype.onStart = function (listener, context) {
-    this.on(this.EVENT_START, listener, context);
-    return this;
-};
-
-/**
- *
- * @param {Function|EventEmitter} listener
- * @param {Object} [context=this]
- * @returns {Queue}
- */
-Queue.prototype.onStop = function (listener, context) {
-    this.on(this.EVENT_STOP, listener, context);
     return this;
 };
 
@@ -1064,11 +1024,16 @@ Queue.prototype.onRejectItem = function (listener, context) {
 };
 
 /**
- *
+ * @param {Boolean} [flag=true]
  * @returns {Queue}
  */
-Queue.prototype.strict = function () {
-    this.on(this.EVENT_REJECT_ITEM, this.reject);
+Queue.prototype.strict = function (flag) {
+    if (flag === false) {
+        this.on(this.EVENT_REJECT_ITEM, this.reject);
+    } else {
+        this.off(this.EVENT_REJECT_ITEM, this.reject);
+    }
+
     return this;
 };
 
@@ -1083,14 +1048,13 @@ Response.Queue = Queue;
  */
 module.exports = Response;
 
-function onResultItem(data) {
+function emitEventItem(data) {
     var args;
     var index;
-    var item = this.item;
+    var state = this.item.state;
+    var _events = this._events;
 
-    this.result.push(item);
-
-    if (item.state === this.STATE_RESOLVED) {
+    if (state === this.STATE_RESOLVED && _events[this.EVENT_RESOLVE_ITEM]) {
         index = arguments.length;
 
         if (index) {
@@ -1106,16 +1070,8 @@ function onResultItem(data) {
         } else {
             this.emit(this.EVENT_RESOLVE_ITEM);
         }
-    } else if (item.state === this.STATE_REJECTED) {
+    } else if (state === this.STATE_REJECTED && _events[this.EVENT_REJECT_ITEM]) {
         this.emit(this.EVENT_REJECT_ITEM, data);
-    }
-
-    if (this.stopped === false) {
-        if (this.stack.length) {
-            this.start();
-        } else {
-            this.resolve.apply(this, this.result);
-        }
     }
 
     return this;
