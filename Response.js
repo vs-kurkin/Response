@@ -268,11 +268,9 @@ Response.prototype.bind = function (callback, context) {
 
     var _context = context == null ? this : context;
 
-    function responseCallback() {
+    return function responseCallback() {
         callback.apply(_context, arguments);
-    }
-
-    return responseCallback;
+    };
 };
 
 /**
@@ -342,12 +340,18 @@ Response.prototype.setState = function (state, args) {
  */
 Response.prototype.onState = function (state, listener, context) {
     var event = (state instanceof Event) ? state : new Event(state, listener, context);
+    var _listener = event.listener;
+    var _context = event.context == null ? this : event.context;
     var currentEvent = EventEmitter.event;
 
     if (this.state === event.type) {
         EventEmitter.event = event;
 
-        event.listener.apply(event.context == null ? this : event.context, this.stateData);
+        if (typeof _listener === 'function') {
+            _listener.apply(_context, this.stateData);
+        } else {
+            _listener.emit.apply(_context, [event.type].concat(this.stateData));
+        }
 
         EventEmitter.event = currentEvent;
 
@@ -356,9 +360,7 @@ Response.prototype.onState = function (state, listener, context) {
         }
     }
 
-    this.on(event);
-
-    return this;
+    return this.on(event);
 };
 
 /**
@@ -388,9 +390,7 @@ Response.prototype.onceState = function (state, listener, context) {
  * @returns {Response}
  */
 Response.prototype.onChangeState = function (listener, context) {
-    this.on(this.EVENT_CHANGE_STATE, listener, context);
-
-    return this;
+    return this.on(this.EVENT_CHANGE_STATE, listener, context);
 };
 
 /**
@@ -650,21 +650,22 @@ Response.prototype.listen = function (response) {
  * @returns {Response}
  */
 Response.prototype.done = function () {
-    this
+    return this
         .onceState(this.STATE_RESOLVED, this.clear)
         .onceState(this.STATE_REJECTED, this.clear);
-
-    return this;
 };
 
 /**
  *
  * @param {Object|null} [context]
+ * @returns {Response}
  */
 Response.prototype.setContext = function (context) {
     if (typeof context === 'object') {
         this.context = context;
     }
+
+    return this;
 };
 
 /**
@@ -706,20 +707,25 @@ Response.prototype.getCallback = function () {
 /**
  *
  * @example
- * Response
+ * var response = new Response();
+ *
+ * response
+ *   .makeCallback()
+ *   .setContext(fs)
+ *
  *   // Open file.txt;
- *   .fCall(fs.open, '/file.txt', 'r')
+ *   .invoke(fs.open, '/file.txt', 'r', response.callback)
  *
  *   // File is opened, read first 10 bytes
  *   .then(function (fd) {
  *     this
  *       .setData(fd) // Save file descriptor
- *       .invoke(fs.read, fd, new Buffer(), 0, 10, null);
+ *       .invoke('read', fd, new Buffer(), 0, 10, null, this.callback);
  *   })
  *
  *   // File is read
  *   .then(function (bytesRead, buffer) {
- *     this.invoke(fs.close, this.data);
+ *     this.invoke('close', this.data, this.callback);
  *   })
  *
  *   // File is closed
@@ -736,7 +742,7 @@ Response.prototype.invoke = function (method, args) {
     var index;
     var _method = method;
 
-    if ((typeof _method === 'string' || getType(_method) === 'String')) {
+    if (typeof _method === 'string' || getType(_method) === 'String') {
         if (context == null) {
             throw new Error('Context object is not defined. Use the Response#setContext method.');
         }
@@ -880,9 +886,7 @@ Queue.prototype.clear = function () {
 
     result.length = 0;
 
-    Queue.call(this);
-
-    return this;
+    return Queue.call(this);
 };
 
 /**
