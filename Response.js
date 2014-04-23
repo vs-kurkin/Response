@@ -7,7 +7,6 @@ var EventEmitter = require('EventEmitter');
 var Event = EventEmitter.Event;
 var push = Array.prototype.push;
 var toString = Object.prototype.toString;
-var on = EventEmitter.prototype.on;
 var emit = EventEmitter.prototype.emit;
 
 /**
@@ -357,7 +356,7 @@ Response.prototype.onState = function (state, listener, context) {
         }
     }
 
-    on.call(this, event);
+    this.on(event);
 
     return this;
 };
