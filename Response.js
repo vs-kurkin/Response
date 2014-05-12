@@ -66,7 +66,7 @@ State.prototype.EVENT_CHANGE_STATE = 'changeState';
  * @function
  * @returns {State}
  */
-State.prototype.clear = clear;
+State.prototype.clear = State;
 
 /**
  *
@@ -347,7 +347,7 @@ Response.prototype.setData = function (data) {
  *
  * @returns {Response}
  */
-Response.prototype.clear = clear;
+Response.prototype.clear = Response;
 
 /**
  *
@@ -1190,8 +1190,4 @@ function inherits(constructor, base) {
 function create() {
     Constructor.prototype = new this();
     return new Constructor(this).__base();
-}
-
-function clear() {
-    return this.constructor();
 }
