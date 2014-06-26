@@ -11,23 +11,23 @@ var emit = EventEmitter.prototype.emit;
 
 /**
  *
- * @param {String|Number} [state]
+ * @param {String|Number} [state] Начальное состояние объекта.
  * @returns {State}
  * @constructor
  * @extends EventEmitter
  */
 function State(state) {
-    this.__base();
+    this.EventEmitter();
 
     /**
-     *
+     * Текущее состояние объекта.
      * @readonly
      * @type {String}
      */
     this.state = state;
 
     /**
-     *
+     * Данные для обработчиков стостояния.
      * @readonly
      * @type {Array}
      * @default []
@@ -38,8 +38,8 @@ function State(state) {
 }
 
 /**
- *
- * @param {Object} [object]
+ * Проверяет, я вляется ли объект экземпляром конструктора {@link State}.
+ * @param {Object} [object] Проверяемый объект.
  * @returns {Boolean}
  */
 State.isState = function (object) {
@@ -47,32 +47,61 @@ State.isState = function (object) {
 };
 
 /**
- *
+ * Создает объект, который наследует от объекта {@link State}.
  * @function
  * @static
  * @returns {Object}
+ * @example
+ * var obj = State.create();
+ * obj instanceof State; // true
+ * obj.hasOwnProperty('state'); // false
  */
 State.create = create;
 
 inherits(State, EventEmitter);
 
+State.prototype.EventEmitter = EventEmitter;
+
 /**
+ * Событие изменения состояния.
  * @default 'changeState'
  * @type {String}
  */
 State.prototype.EVENT_CHANGE_STATE = 'changeState';
 
 /**
+ * Сбрасывает объект в указанное состояние и удаляет данные.
+ * Никакие события при этом не вызываются.
  * @function
+ * @param {String|Number} [state] Состояние, в которое необходимо сбросить объект.
  * @returns {State}
+ * @example
+ * new State()
+ *  .onChangeState(function (state) {
+ *    console.log(state); // only 'foo'
+ *  })
+ *  .setState('foo')
+ *  .reset('bar');
+ *
+ * console.log(inst.state); // bar
  */
-State.prototype.clear = State;
+State.prototype.reset = State;
 
 /**
- *
- * @param {String|Number} state
- * @param {...*} [args]
+ * Изменяет состояние объекта.
+ * После изменения состояния, первым будет вызвано событие с именем, соответствуюшим новому значению состояния.
+ * Затем событие {@link State#EVENT_CHANGE_STATE}.
+ * Если новое состояние не передано или объект уже находится в указаном состоянии, события не будут вызваны.
+ * @param {String|Number} state Новое сотояние объекта.
+ * @param {...*} [args] Данные, которые будут переданы в аргументы обработчикам нового состояния.
  * @returns {State}
+ * @example
+ * new State()
+ *   .onState('foo', function (bar) {
+ *     bar; // 'baz'
+ *     this.state; // 'foo'
+ *   })
+ *   .setState('foo', 'baz');
  */
 State.prototype.setState = function (state, args) {
     var index = arguments.length;
@@ -106,11 +135,19 @@ State.prototype.setState = function (state, args) {
 };
 
 /**
- *
- * @param {String|Number} state
- * @param {Function|EventEmitter|Event} listener
- * @param {Object} [context=this]
+ * Регистрирует обработчик состояния.
+ * Если объект уже находится в указанном состоянии, обработчик будет вызван немедленно.
+ * @param {String|Number} state Отслеживаемое состояние.
+ * @param {Function|EventEmitter|Event} listener Обработчик состояния.
+ * @param {Object} [context=this] Контекст обработчика состояния.
  * @returns {State}
+ * @example
+ * new State()
+ *   .onState('foo', function () {
+ *     this.state; // only 'foo'
+ *   })
+ *   .setState('foo')
+ *   .setState('bar');
  */
 State.prototype.onState = function (state, listener, context) {
     var event = (listener instanceof Event) ? listener : new Event(state, listener, context);
@@ -138,11 +175,19 @@ State.prototype.onState = function (state, listener, context) {
 };
 
 /**
- *
- * @param {String|Number} state
- * @param {Function|EventEmitter|Event} [listener]
- * @param {Object} [context=this]
+ * Регистрирует одноразовый обработчик состояния.
+ * @param {String|Number} state Отслеживаемое состояние.
+ * @param {Function|EventEmitter|Event} [listener] Обработчик состояния.
+ * @param {Object} [context=this] Контекст обработчика состояния.
  * @returns {State}
+ * @example
+ * new State()
+ *   .onceState('foo', function () {
+ *     // Этот обработчик будет выполнен один раз
+ *   })
+ *   .setState('foo')
+ *   .setState('bar')
+ *   .setState('foo');
  */
 State.prototype.onceState = function (state, listener, context) {
     var event = (listener instanceof Event) ? listener : new Event(state, listener, context);
@@ -152,13 +197,35 @@ State.prototype.onceState = function (state, listener, context) {
 };
 
 /**
- *
- * @param {Function|EventEmitter|Event} listener
- * @param {Object} [context=this]
+ * Регистрирует обработчик изменения состояния.
+ * @param {Function|EventEmitter|Event} listener Обработчик изменения состояния.
+ * @param {Object} [context=this] Контекст обработчика изменения состояния.
  * @returns {State}
+ * @example
+ * new State()
+ *   .onChangeState(function (state) {
+ *     console.log(state); // 'foo', 'bar'
+ *   })
+ *   .setState('foo')
+ *   .setState('bar');
  */
 State.prototype.onChangeState = function (listener, context) {
     return this.on(this.EVENT_CHANGE_STATE, listener, context);
+};
+
+/**
+ * Отменяет обработку изменения состояния.
+ * @param {Function|EventEmitter|Event} [listener] Обработчик, который необходимо отменить. Если обработчик не был передан, будут отменены все обработчики.
+ * @returns {State}
+ */
+State.prototype.offChangeState = function (listener) {
+    if (listener) {
+        this.removeListener(this.EVENT_CHANGE_STATE, listener);
+    } else {
+        this.removeAllListeners(this.EVENT_CHANGE_STATE);
+    }
+
+    return this;
 };
 
 /**
@@ -170,7 +237,7 @@ State.prototype.onChangeState = function (listener, context) {
  * @returns {Response}
  */
 function Response(wrapper) {
-    this.__base(this.STATE_PENDING);
+    this.State(this.STATE_PENDING);
 
     /**
      *
@@ -308,6 +375,8 @@ Response.strictQueue = function (args) {
 
 inherits(Response, State);
 
+Response.prototype.State = State;
+
 /**
  * @type {String}
  * @default 'pending'
@@ -347,7 +416,7 @@ Response.prototype.setData = function (data) {
  *
  * @returns {Response}
  */
-Response.prototype.clear = Response;
+Response.prototype.reset = Response;
 
 /**
  *
@@ -657,8 +726,8 @@ Response.prototype.listen = function (response) {
  */
 Response.prototype.done = function () {
     this
-        .onceState(this.STATE_RESOLVED, this.clear)
-        .onceState(this.STATE_REJECTED, this.clear);
+        .onceState(this.STATE_RESOLVED, this.reset)
+        .onceState(this.STATE_REJECTED, this.reset);
 
     return this;
 };
@@ -855,7 +924,7 @@ Response.prototype.map = function (keys) {
  * @returns {Queue}
  */
 function Queue(stack, start) {
-    this.__base();
+    this.Response();
 
     /**
      * @readonly
@@ -884,6 +953,8 @@ Queue.isQueue = function (object) {
 };
 
 inherits(Queue, Response);
+
+Queue.prototype.Response = Response;
 
 /**
  * @default 'start'
@@ -919,7 +990,7 @@ Queue.prototype.EVENT_REJECT_ITEM = 'rejectItem';
  *
  * @returns {Queue}
  */
-Queue.prototype.clear = function () {
+Queue.prototype.reset = function () {
     var result = this.result;
     var length = result.length;
     var index = 0;
@@ -929,7 +1000,7 @@ Queue.prototype.clear = function () {
         response = result[index++];
 
         if (Response.isResponse(response)) {
-            response.clear();
+            response.reset();
         }
     }
 
@@ -937,7 +1008,7 @@ Queue.prototype.clear = function () {
 
     this.item = null;
     this.stack.length = 0;
-    this.__base();
+    this.Response();
 
     return this;
 };
@@ -1125,10 +1196,10 @@ Queue.prototype.onRejectItem = function (listener, context) {
  * @returns {Queue}
  */
 Queue.prototype.strict = function (flag) {
-    if (flag === false) {
-        this.on(this.EVENT_REJECT_ITEM, this.reject);
-    } else {
-        this.off(this.EVENT_REJECT_ITEM, this.reject);
+    this.off(this.EVENT_REJECT_ITEM, this.reset);
+
+    if (flag !== false) {
+        this.on(this.EVENT_REJECT_ITEM, this.reset);
     }
 
     return this;
@@ -1182,12 +1253,12 @@ function inherits(constructor, base) {
     }
 
     prototype.constructor = constructor;
-    prototype.__base = base;
 
+    constructor.__base = base;
     constructor.prototype = prototype;
 }
 
 function create() {
     Constructor.prototype = new this();
-    return new Constructor(this).__base();
+    return new Constructor(this);
 }
