@@ -248,15 +248,6 @@ function Response(wrapper) {
 
     /**
      *
-     * Fix: Did not inline (target contains unsupported syntax [early])
-     * @type {Array}
-     * @default []
-     * @readonly
-     */
-    this.result = new Array(0);
-
-    /**
-     *
      * @type {Error}
      * @default null
      */
@@ -313,11 +304,11 @@ Response.create = create;
  */
 Response.resolve = function (results) {
     var response = new Response();
-    var result = response.result;
+    var stateData = response.stateData;
     var index = arguments.length;
 
     while (index--) {
-        result[index] = arguments[index];
+        stateData[index] = arguments[index];
     }
 
     response.state = response.STATE_RESOLVED;
@@ -493,7 +484,7 @@ Response.prototype.onState = function (state, listener, context) {
  * @returns {Response}
  */
 Response.prototype.pending = function () {
-    this.result.length = 0;
+    this.stateData.length = 0;
     this.reason = null;
 
     if (this.state !== this.STATE_PENDING) {
@@ -509,20 +500,20 @@ Response.prototype.pending = function () {
  * @returns {Response}
  */
 Response.prototype.resolve = function (results) {
-    var result = this.result;
+    var stateData = this.stateData;
 
     this.reason = null;
 
     if (arguments.length) {
-        result.length = 0;
-        push.apply(result, arguments);
+        stateData.length = 0;
+        push.apply(stateData, arguments);
     }
 
     if (this.state !== this.STATE_RESOLVED) {
         this.stopEmit();
 
-        if (result.length) {
-            this.setState.apply(this, [this.STATE_RESOLVED].concat(result));
+        if (stateData.length) {
+            this.setState.apply(this, [this.STATE_RESOLVED].concat(stateData));
         } else {
             this.setState(this.STATE_RESOLVED);
         }
@@ -537,7 +528,7 @@ Response.prototype.resolve = function (results) {
  * @returns {Response}
  */
 Response.prototype.reject = function (reason) {
-    this.result.length = 0;
+    this.stateData.length = 0;
 
     if (arguments.length && reason != null) {
         this.reason = toError(reason);
@@ -883,7 +874,7 @@ Response.prototype.invoke = function (method, args) {
  * @param {Object} [context=this]
  */
 Response.prototype.spread = function (callback, context) {
-    callback.apply(context == null ? this : context, this.result);
+    callback.apply(context == null ? this : context, this.stateData);
 
     return this;
 };
@@ -903,13 +894,13 @@ Response.prototype.map = function (keys) {
         return {};
     }
 
-    var result = this.result;
+    var stateData = this.stateData;
     var length = keys.length;
     var index = 0;
     var hash = {};
 
     while (index < length) {
-        hash[keys[index]] = result[index++];
+        hash[keys[index]] = stateData[index++];
     }
 
     return hash;
@@ -991,20 +982,20 @@ Queue.prototype.EVENT_REJECT_ITEM = 'rejectItem';
  * @returns {Queue}
  */
 Queue.prototype.reset = function () {
-    var result = this.result;
-    var length = result.length;
+    var stateData = this.stateData;
+    var length = stateData.length;
     var index = 0;
     var response;
 
     while (index < length) {
-        response = result[index++];
+        response = stateData[index++];
 
         if (Response.isResponse(response)) {
             response.reset();
         }
     }
 
-    result.length = 0;
+    stateData.length = 0;
 
     this.item = null;
     this.stack.length = 0;
@@ -1023,7 +1014,7 @@ Queue.prototype.map = function (keys) {
         return {};
     }
 
-    var result = this.result;
+    var stateData = this.stateData;
     var key;
     var length = keys.length;
     var index = 0;
@@ -1031,7 +1022,7 @@ Queue.prototype.map = function (keys) {
     var item;
 
     while (index < length) {
-        item = result[index++];
+        item = stateData[index++];
         key = keys[index];
 
         if (Response.isResponse(item)) {
@@ -1053,8 +1044,8 @@ Queue.prototype.start = function () {
     var item = this.item;
 
     if (stack.length === 0) {
-        if (this.state !== this.STATE_START) {
-            this.resolve.apply(this, this.result);
+        if (this.state === this.STATE_START) {
+            this.resolve.apply(this, this.stateData);
         }
 
         return this;
@@ -1070,8 +1061,8 @@ Queue.prototype.start = function () {
     if (typeof this.item === 'function') {
         try {
             if (item instanceof Response) {
-                if (item.result.length) {
-                    this.item = this.item.apply(this, item.result);
+                if (item.stateData.length) {
+                    this.item = this.item.apply(this, item.stateData);
                 } else {
                     this.item = this.item();
                 }
@@ -1100,7 +1091,7 @@ Queue.prototype.start = function () {
         return this;
     }
 
-    this.result.push(item);
+    this.stateData.push(item);
 
     if (Response.isResponse(item)) {
         item
