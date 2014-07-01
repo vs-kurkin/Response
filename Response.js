@@ -151,11 +151,12 @@ State.prototype.setState = function (state, args) {
  */
 State.prototype.onState = function (state, listener, context) {
     var event = (listener instanceof Event) ? listener : new Event(state, listener, context);
+    var _state = state || event.type;
     var _listener = event.listener;
-    var _context = event.context == null ? this : event.context;
+    var _context = context || event.context || this;
     var currentEvent = EventEmitter.event;
 
-    if (this.state === state) {
+    if (this.state === _state) {
         EventEmitter.event = event;
 
         if (typeof _listener === 'function') {
@@ -171,7 +172,7 @@ State.prototype.onState = function (state, listener, context) {
         }
     }
 
-    return this.on(state, event);
+    return this.on(_state, event);
 };
 
 /**
@@ -193,7 +194,7 @@ State.prototype.onceState = function (state, listener, context) {
     var event = (listener instanceof Event) ? listener : new Event(state, listener, context);
     event.isOnce = true;
 
-    return this.onState(state, event);
+    return this.onState(state, event, context || event.context);
 };
 
 /**
@@ -436,12 +437,12 @@ Response.prototype.emit = function (type, args) {
     var reason;
     var result = false;
 
-    try {
-        if (this._events[type]) {
+    if (this._events && this._events[type]) {
+        try {
             result = emit.apply(this, arguments);
+        } catch (error) {
+            reason = error;
         }
-    } catch (error) {
-        reason = error;
     }
 
     if (reason) {
@@ -488,8 +489,9 @@ Response.prototype.pending = function () {
     this.reason = null;
 
     if (this.state !== this.STATE_PENDING) {
-        this.stopEmit();
-        this.setState(this.STATE_PENDING);
+        this
+            .stopEmit()
+            .setState(this.STATE_PENDING);
     }
 
     return this;
@@ -890,14 +892,15 @@ Response.prototype.spread = function (callback, context) {
  * @returns {Object}
  */
 Response.prototype.map = function (keys) {
+    var hash = {};
+
     if (!isArray(keys)) {
-        return {};
+        return hash;
     }
 
     var stateData = this.stateData;
     var length = keys.length;
     var index = 0;
-    var hash = {};
 
     while (index < length) {
         hash[keys[index]] = stateData[index++];
@@ -1022,14 +1025,16 @@ Queue.prototype.map = function (keys) {
     var item;
 
     while (index < length) {
-        item = stateData[index++];
         key = keys[index];
+        item = stateData[index++];
 
-        if (Response.isResponse(item)) {
+        if (item && Response.isResponse(item)) {
             item = item.map(key);
         }
 
-        hash[key] = item;
+        if (key != null) {
+            hash[key] = item;
+        }
     }
 
     return hash;
@@ -1043,65 +1048,57 @@ Queue.prototype.start = function () {
     var stack = this.stack;
     var item = this.item;
 
-    if (stack.length === 0) {
-        if (this.state === this.STATE_START) {
-            this.resolve.apply(this, this.stateData);
-        }
-
-        return this;
-    }
-
-    this.item = stack.shift();
-    this.setState(this.STATE_START);
-
-    if (this.state !== this.STATE_START) {
-        return this;
-    }
-
-    if (typeof this.item === 'function') {
-        try {
-            if (item instanceof Response) {
-                if (item.stateData.length) {
-                    this.item = this.item.apply(this, item.stateData);
-                } else {
-                    this.item = this.item();
-                }
-            } else {
-                this.item = this.item(item);
-            }
-        } catch (error) {
-            this.reject(error);
-            return this;
-        }
+    while (stack.length) {
+        this.item = stack.shift();
+        this.setState(this.STATE_START);
 
         if (this.state !== this.STATE_START) {
             return this;
         }
+
+        if (typeof this.item === 'function') {
+            try {
+                if (item instanceof Response) {
+                    if (item.stateData.length) {
+                        this.item = this.item.apply(this, item.stateData);
+                    } else {
+                        this.item = this.item();
+                    }
+                } else {
+                    this.item = this.item(item);
+                }
+            } catch (error) {
+                this.reject(error);
+                return this;
+            }
+
+            if (this.state !== this.STATE_START) {
+                return this;
+            }
+        }
+
+        item = this.item;
+
+        if (item === this) {
+            continue;
+        }
+
+        this.emit(this.EVENT_NEXT_ITEM, item);
+
+        if (this.state !== this.STATE_START) {
+            return this;
+        }
+
+        this.stateData.push(item);
+
+        if (item && Response.isResponse(item) && item.state === item.STATE_PENDING) {
+            item.always(this.start, this);
+            return this;
+        }
     }
 
-    item = this.item;
-
-    if (item === this) {
-        return this.start();
-    }
-
-    this.emit(this.EVENT_NEXT_ITEM, item);
-
-    if (this.state !== this.STATE_START) {
-        return this;
-    }
-
-    this.stateData.push(item);
-
-    if (Response.isResponse(item)) {
-        item
-            .delegate(this, item.STATE_RESOLVED, this.EVENT_RESOLVE_ITEM)
-            .onceState(item.STATE_RESOLVED, this.start, this)
-
-            .delegate(this, item.STATE_REJECTED, this.EVENT_REJECT_ITEM)
-            .onceState(item.STATE_REJECTED, this.start, this);
-    } else {
-        this.start();
+    if (stack.length === 0 && this.state === this.STATE_START) {
+        this.resolve();
     }
 
     return this;
@@ -1187,10 +1184,10 @@ Queue.prototype.onRejectItem = function (listener, context) {
  * @returns {Queue}
  */
 Queue.prototype.strict = function (flag) {
-    this.off(this.EVENT_REJECT_ITEM, this.reset);
+    this.off(this.EVENT_REJECT_ITEM, this.reject);
 
     if (flag !== false) {
-        this.on(this.EVENT_REJECT_ITEM, this.reset);
+        this.on(this.EVENT_REJECT_ITEM, this.reject);
     }
 
     return this;
