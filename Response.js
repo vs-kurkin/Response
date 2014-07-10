@@ -563,6 +563,14 @@ Response.prototype.progress = function (progress) {
  *
  * @returns {Boolean}
  */
+Response.prototype.isPending = function () {
+    return this.state === this.STATE_PENDING;
+};
+
+/**
+ *
+ * @returns {Boolean}
+ */
 Response.prototype.isResolved = function () {
     return this.state === this.STATE_RESOLVED;
 };
@@ -919,18 +927,7 @@ Response.prototype.map = function (keys) {
  */
 function Queue(stack, start) {
     this.Response();
-
-    /**
-     * @readonly
-     * @type {Array}
-     */
     this.stack = isArray(stack) ? stack : new Array(0);
-
-    /**
-     * @readonly
-     * @default null
-     * @type {*}
-     */
     this.item = null;
 
     if (typeof start === 'boolean' || getType(start) === 'Boolean' ? start.valueOf() : false) {
@@ -979,6 +976,20 @@ Queue.prototype.EVENT_RESOLVE_ITEM = 'resolveItem';
  * @type {String}
  */
 Queue.prototype.EVENT_REJECT_ITEM = 'rejectItem';
+
+/**
+ * @readonly
+ * @type {Array}
+ * @default null
+ */
+Queue.prototype.stack = null;
+
+/**
+ * @readonly
+ * @default null
+ * @type {*}
+ */
+Queue.prototype.item = null;
 
 /**
  *
