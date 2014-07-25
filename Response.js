@@ -116,7 +116,7 @@ State.prototype.setState = function (state, args) {
         this.state = state;
         this.stateData.length = index;
 
-        if (index--) {
+        if (index) {
             while (index--) {
                 this.stateData[index] = arguments[index + 1];
             }
@@ -385,7 +385,7 @@ Response.prototype.STATE_RESOLVED = 'resolve';
  * @type {String}
  * @default 'error'
  */
-Response.prototype.STATE_REJECTED = 'reject';
+Response.prototype.STATE_REJECTED = 'error';
 
 /**
  * @type {String}
@@ -489,9 +489,8 @@ Response.prototype.pending = function () {
     this.reason = null;
 
     if (this.state !== this.STATE_PENDING) {
-        this
-            .stopEmit()
-            .setState(this.STATE_PENDING);
+        this.stopEmit();
+        this.setState(this.STATE_PENDING);
     }
 
     return this;
@@ -537,9 +536,8 @@ Response.prototype.reject = function (reason) {
     }
 
     if (this.state !== this.STATE_REJECTED) {
-        this
-            .stopEmit()
-            .setState(this.STATE_REJECTED, this.reason);
+        this.stopEmit();
+        this.setState(this.STATE_REJECTED, this.reason);
     }
 
 
