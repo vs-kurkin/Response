@@ -18,20 +18,7 @@ var emit = EventEmitter.prototype.emit;
  */
 function State(state) {
     this.EventEmitter();
-
-    /**
-     * Текущее состояние объекта.
-     * @readonly
-     * @type {String}
-     */
-    this.state = state;
-
-    /**
-     * Данные для обработчиков стостояния.
-     * @readonly
-     * @type {Array}
-     * @default []
-     */
+    this.state = state || this.state;
     this.stateData = new Array(0);
 
     return this;
@@ -68,6 +55,21 @@ State.prototype.EventEmitter = EventEmitter;
  * @type {String}
  */
 State.prototype.EVENT_CHANGE_STATE = 'changeState';
+
+/**
+ * Текущее состояние объекта.
+ * @readonly
+ * @type {String}
+ */
+State.prototype.state = null;
+
+/**
+ * Данные для обработчиков стостояния.
+ * @readonly
+ * @type {Array}
+ * @default []
+ */
+State.prototype.stateData = null;
 
 /**
  * Сбрасывает объект в указанное состояние и удаляет данные.
