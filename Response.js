@@ -1071,7 +1071,7 @@ Queue.prototype.item = null;
  * @returns {*}
  */
 Queue.prototype.getItemResult = function (itemKey, resultKey) {
-    var result = Response.prototype.getResult.call(this, itemKey);
+    var result = this.getResult(itemKey);
 
     return (result instanceof Response) ? result.getResult(resultKey) : result;
 };
