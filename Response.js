@@ -240,33 +240,11 @@ State.prototype.offChangeState = function (listener) {
 function Response(wrapper) {
     this.State(this.STATE_PENDING);
 
-    /**
-     *
-     * @type {*}
-     * @default null
-     */
     this.data = null;
-
-    /**
-     *
-     * @type {Error}
-     * @default null
-     */
     this.reason = null;
-
-    /**
-     *
-     * @type {Object}
-     * @default null
-     */
     this.context = null;
-
-    /**
-     *
-     * @type {Function|null}
-     * @default null
-     */
     this.callback = null;
+    this.keys = null;
 
     if (typeof wrapper === 'function') {
         this.invoke(wrapper);
@@ -395,11 +373,57 @@ Response.prototype.EVENT_PROGRESS = 'progress';
 
 /**
  *
+ * @type {*}
+ * @default null
+ */
+Response.prototype.data = null;
+
+/**
+ *
+ * @type {Error}
+ * @default null
+ */
+Response.prototype.reason = null;
+
+/**
+ *
+ * @type {Object}
+ * @default null
+ */
+Response.prototype.context = null;
+
+/**
+ *
+ * @type {Function|null}
+ * @default null
+ */
+Response.prototype.callback = null;
+
+/**
+ *
+ * @type {Array}
+ * @default null
+ */
+Response.prototype.keys = null;
+
+/**
+ *
  * @param {*} [data=null]
  * @returns {Response}
  */
 Response.prototype.setData = function (data) {
     this.data = arguments.length ? data : null;
+
+    return this;
+};
+
+/**
+ *
+ * @param {String|Number|Array|Arguments} [keys=null]
+ * @returns {Response}
+ */
+Response.prototype.setKeys = function (keys) {
+    this.keys = arguments.length ? keys : null;
 
     return this;
 };
@@ -707,7 +731,7 @@ Response.prototype.notify = function (parent) {
  */
 Response.prototype.listen = function (response) {
     if (response === this) {
-        throw new Error('Can\'t listen on itself');
+        throw new Error('Cannot listen on itself');
     }
 
     if (this.state !== this.STATE_PENDING) {
@@ -789,10 +813,12 @@ Response.prototype.callback = function defaultResponseCallback(error, results) {
  *
  * @param {Function} [callback=Response.callback]
  * @param {Object} [context=this]
- * @returns {Function}
+ * @returns {Response}
  */
 Response.prototype.makeCallback = function (callback, context) {
-    return this.callback = this.bind(typeof callback === 'function' ? callback : Response.prototype.callback, context);
+    this.callback = this.bind(typeof callback === 'function' ? callback : Response.prototype.callback, context);
+
+    return this;
 };
 
 /**
@@ -803,7 +829,11 @@ Response.prototype.makeCallback = function (callback, context) {
  * @returns {Function}
  */
 Response.prototype.getCallback = function () {
-    return typeof this.callback === 'function' ? this.callback : this.makeCallback();
+    if (typeof this.callback !== 'function') {
+        this.makeCallback();
+    }
+
+    return this.callback;
 };
 
 /**
@@ -891,28 +921,70 @@ Response.prototype.spread = function (callback, context) {
  *
  * @example
  * new Response()
- *   .resolve(1, 2)
- *   .map(['foo', 'bar']); // {foo: 1, bar: 2}
+ *   .resolve(3) // resolve one result
+ *   .getResult() // 3, returns result
+ *   .resolve(1, 2) // resolve more results
+ *   .getResult() // [1, 2], returns a results array
+ *   .getResult(1) // 2, returns result on a index
+ *   .getResult(['foo', 'bar']) // {foo: 1, bar: 2}, returns a hash results
+ *   .setKeys(['foo', 'bar']) // sets a default keys
+ *   .getResult('bar') // 2, returns result on a default key
  *
- * @param {Array} [keys=[]]
+ *
+ * @param {String|Number|Array|Arguments} [key]
+ * @returns {*|null}
+ */
+Response.prototype.getResult = function (key) {
+    var keys = arguments.length ? key : this.keys;
+    var stateData = this.stateData;
+    var result;
+    var index;
+    var length;
+    var _key;
+
+    switch (getType(keys)) {
+        case 'String':
+            index = this.keys.length;
+
+            while (index--) {
+                if (this.keys[index] === keys) {
+                    return stateData[index];
+                }
+            }
+
+            return null;
+
+        case 'Number':
+            return stateData[keys];
+
+        case 'Array':
+        case 'Arguments':
+            length = keys.length;
+            index = 0;
+            result = {};
+
+            while (index < length) {
+                _key = keys[index];
+
+                if (_key != null) {
+                    result[_key] = stateData[index++];
+                }
+            }
+
+            return result;
+
+        default:
+            return stateData.length === 1 ? stateData[0] : stateData;
+    }
+
+};
+
+/**
+ *
  * @returns {Object}
  */
-Response.prototype.map = function (keys) {
-    var hash = {};
-
-    if (!isArray(keys)) {
-        return hash;
-    }
-
-    var stateData = this.stateData;
-    var length = keys.length;
-    var index = 0;
-
-    while (index < length) {
-        hash[keys[index]] = stateData[index++];
-    }
-
-    return hash;
+Response.prototype.toJSON = function () {
+    return this.getResult();
 };
 
 /**
@@ -925,10 +997,11 @@ Response.prototype.map = function (keys) {
  */
 function Queue(stack, start) {
     this.Response();
+
     this.stack = isArray(stack) ? stack : new Array(0);
     this.item = null;
 
-    if (typeof start === 'boolean' || getType(start) === 'Boolean' ? start.valueOf() : false) {
+    if (getType(start) === 'Boolean' ? start.valueOf() : false) {
         this.start();
     }
 
@@ -991,6 +1064,18 @@ Queue.prototype.item = null;
 
 /**
  *
+ * @param {String|Number|Array|Arguments} [itemKey]
+ * @param {String|Number|Array|Arguments} [resultKey]
+ * @returns {*}
+ */
+Queue.prototype.getItemResult = function (itemKey, resultKey) {
+    var result = Response.prototype.getResult.call(this, itemKey);
+
+    return (result instanceof Response) ? result.getResult(resultKey) : result;
+};
+
+/**
+ *
  * @returns {Queue}
  */
 Queue.prototype.reset = function () {
@@ -1014,39 +1099,6 @@ Queue.prototype.reset = function () {
     this.Response();
 
     return this;
-};
-
-/**
- *
- * @param {Array} [keys=[]]
- * @returns {Object}
- */
-Queue.prototype.map = function (keys) {
-    if (!isArray(keys)) {
-        return {};
-    }
-
-    var stateData = this.stateData;
-    var key;
-    var length = keys.length;
-    var index = 0;
-    var hash = {};
-    var item;
-
-    while (index < length) {
-        key = keys[index];
-        item = stateData[index++];
-
-        if (item && Response.isResponse(item)) {
-            item = item.map(key);
-        }
-
-        if (key != null) {
-            hash[key] = item;
-        }
-    }
-
-    return hash;
 };
 
 /**
@@ -1107,6 +1159,7 @@ Queue.prototype.start = function () {
     }
 
     if (stack.length === 0 && this.state === this.STATE_START) {
+        this.item = null;
         this.resolve();
     }
 
