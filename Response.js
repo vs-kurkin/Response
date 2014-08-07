@@ -109,27 +109,36 @@ State.prototype.setState = function (state, args) {
     var index = arguments.length;
     var _state = this.state;
     var _events;
-    var hasListeners;
 
-    if (index-- && _state !== state) {
-        _events = this._events;
-        hasListeners = _events && _events[state];
+    if (index--) {
+        if (_state !== state || index) {
+            this.stateData.length = index;
 
-        this.state = state;
-        this.stateData.length = index;
-
-        if (index) {
             while (index--) {
                 this.stateData[index] = arguments[index + 1];
             }
 
-            hasListeners && this.emit.apply(this, arguments);
-        } else if (hasListeners) {
-            this.emit(state);
+            if (this.eventData) {
+                this.eventData.length = 0;
+                push.apply(this.eventData, this.stateData);
+            }
         }
 
-        if (_events && _events[this.EVENT_CHANGE_STATE] && this.state === state) {
-            this.emit(this.EVENT_CHANGE_STATE, _state);
+        if (_state !== state) {
+            this.stopEmit();
+            this.state = state;
+
+            _events = this._events;
+
+            if (_events) {
+                if (_events[state]) {
+                    this.emit.apply(this, arguments);
+                }
+
+                if (_events[this.EVENT_CHANGE_STATE] && this.state === state) {
+                    this.emit(this.EVENT_CHANGE_STATE, _state);
+                }
+            }
         }
     }
 
@@ -243,7 +252,6 @@ function Response(wrapper) {
     this.State(this.STATE_PENDING);
 
     this.data = null;
-    this.reason = null;
     this.context = null;
     this.callback = null;
     this.keys = null;
@@ -285,11 +293,10 @@ Response.create = create;
  */
 Response.resolve = function (results) {
     var response = new Response();
-    var stateData = response.stateData;
     var index = arguments.length;
 
     while (index--) {
-        stateData[index] = arguments[index];
+        response.stateData[index] = arguments[index];
     }
 
     response.state = response.STATE_RESOLVED;
@@ -307,7 +314,7 @@ Response.reject = function (reason) {
     var response = new Response();
 
     response.state = response.STATE_REJECTED;
-    response.reason = toError(reason);
+    response.stateData[0] = toError(reason);
 
     return response;
 };
@@ -382,13 +389,6 @@ Response.prototype.data = null;
 
 /**
  *
- * @type {Error}
- * @default null
- */
-Response.prototype.reason = null;
-
-/**
- *
  * @type {Object}
  * @default null
  */
@@ -460,22 +460,17 @@ Response.prototype.bind = function (callback, context) {
  * @returns {Boolean}
  */
 Response.prototype.emit = function (type, args) {
-    var reason;
     var result = false;
 
     if (this._events && this._events[type]) {
         try {
             result = emit.apply(this, arguments);
         } catch (error) {
-            reason = error;
-        }
-    }
-
-    if (reason) {
-        if (this.state === this.STATE_REJECTED) {
-            this.reason = toError(reason);
-        } else {
-            this.reject(reason);
+            if (this.state === this.STATE_REJECTED) {
+                this.stateData[0] = toError(error);
+            } else {
+                this.reject(error);
+            }
         }
     }
 
@@ -494,7 +489,7 @@ Response.prototype.onState = function (state, listener, context) {
             State.prototype.onState.call(this, state, listener, context);
         } catch (error) {
             if (this.state === this.STATE_REJECTED) {
-                this.reason = toError(error);
+                this.stateData[0] = toError(error);
             } else {
                 this.reject(error);
             }
@@ -511,13 +506,7 @@ Response.prototype.onState = function (state, listener, context) {
  * @returns {Response}
  */
 Response.prototype.pending = function () {
-    this.stateData.length = 0;
-    this.reason = null;
-
-    if (this.state !== this.STATE_PENDING) {
-        this.stopEmit();
-        this.setState(this.STATE_PENDING);
-    }
+    this.setState(this.STATE_PENDING);
 
     return this;
 };
@@ -527,24 +516,11 @@ Response.prototype.pending = function () {
  * @returns {Response}
  */
 Response.prototype.resolve = function (results) {
-    var stateData = this.stateData;
+    var stateData = [this.STATE_RESOLVED];
 
-    this.reason = null;
+    push.apply(stateData, arguments);
 
-    if (arguments.length) {
-        stateData.length = 0;
-        push.apply(stateData, arguments);
-    }
-
-    if (this.state !== this.STATE_RESOLVED) {
-        this.stopEmit();
-
-        if (stateData.length) {
-            this.setState.apply(this, [this.STATE_RESOLVED].concat(stateData));
-        } else {
-            this.setState(this.STATE_RESOLVED);
-        }
-    }
+    this.setState.apply(this, stateData);
 
     return this;
 };
@@ -555,17 +531,7 @@ Response.prototype.resolve = function (results) {
  * @returns {Response}
  */
 Response.prototype.reject = function (reason) {
-    this.stateData.length = 0;
-
-    if (arguments.length && reason != null) {
-        this.reason = toError(reason);
-    }
-
-    if (this.state !== this.STATE_REJECTED) {
-        this.stopEmit();
-        this.setState(this.STATE_REJECTED, this.reason);
-    }
-
+    this.setState(this.STATE_REJECTED, reason);
 
     return this;
 };
@@ -933,10 +899,14 @@ Response.prototype.spread = function (callback, context) {
  *   .getResult('bar') // 2, returns result on a default key
  *
  *
- * @param {String|Number|Array|Arguments} [key]
+ * @param {String|Number|Array|Arguments} [key=this.keys]
  * @returns {*|null}
  */
 Response.prototype.getResult = function (key) {
+    if (this.state !== this.STATE_RESOLVED) {
+        return null;
+    }
+
     var keys = arguments.length ? key : this.keys;
     var stateData = this.stateData;
     var result;
@@ -978,7 +948,14 @@ Response.prototype.getResult = function (key) {
         default:
             return stateData.length === 1 ? stateData[0] : stateData;
     }
+};
 
+/**
+ *
+ * @returns {Error|null}
+ */
+Response.prototype.getReason = function () {
+    return this.state === this.STATE_REJECTED ? this.stateData[0] : null;
 };
 
 /**
@@ -1066,18 +1043,6 @@ Queue.prototype.item = null;
 
 /**
  *
- * @param {String|Number|Array|Arguments} [itemKey]
- * @param {String|Number|Array|Arguments} [resultKey]
- * @returns {*}
- */
-Queue.prototype.getItemResult = function (itemKey, resultKey) {
-    var result = this.getResult(itemKey);
-
-    return (result instanceof Response) ? result.getResult(resultKey) : result;
-};
-
-/**
- *
  * @returns {Queue}
  */
 Queue.prototype.reset = function () {
@@ -1160,7 +1125,7 @@ Queue.prototype.start = function () {
         }
     }
 
-    if (stack.length === 0 && this.state === this.STATE_START) {
+    if (stack.length === 0) {
         this.item = null;
         this.resolve();
     }
