@@ -531,7 +531,7 @@ Response.prototype.resolve = function (results) {
  * @returns {Response}
  */
 Response.prototype.reject = function (reason) {
-    this.setState(this.STATE_REJECTED, reason);
+    this.setState(this.STATE_REJECTED, reason != null ? toError(reason) : reason);
 
     return this;
 };
