@@ -1127,7 +1127,7 @@ Queue.prototype.start = function () {
 
     if (stack.length === 0) {
         this.item = null;
-        this.resolve();
+        this.resolve.apply(this, this.stateData);
     }
 
     return this;
