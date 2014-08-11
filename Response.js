@@ -450,7 +450,7 @@ Response.prototype.bind = function (callback, context) {
     var _context = context == null ? this : context;
 
     return function responseCallback() {
-        callback.apply(_context, arguments);
+        return callback.apply(_context, arguments);
     };
 };
 
