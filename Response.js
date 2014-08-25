@@ -90,6 +90,15 @@ State.prototype.stateData = null;
 State.prototype.reset = State;
 
 /**
+ *
+ * @param {String|Number} state
+ * @returns {boolean}
+ */
+State.prototype.is = function (state) {
+    return this.state === state;
+};
+
+/**
  * Изменяет состояние объекта.
  * После изменения состояния, первым будет вызвано событие с именем, соответствуюшим новому значению состояния.
  * Затем событие {@link State#EVENT_CHANGE_STATE}.
@@ -107,11 +116,10 @@ State.prototype.reset = State;
  */
 State.prototype.setState = function (state, args) {
     var index = arguments.length;
-    var _state = this.state;
     var _events;
 
     if (index--) {
-        if (_state !== state || index) {
+        if (!this.is(state) || index) {
             this.stateData.length = index;
 
             while (index--) {
@@ -124,7 +132,7 @@ State.prototype.setState = function (state, args) {
             }
         }
 
-        if (_state !== state) {
+        if (!this.is(state)) {
             this.stopEmit();
             this.state = state;
 
@@ -135,8 +143,8 @@ State.prototype.setState = function (state, args) {
                     this.emit.apply(this, arguments);
                 }
 
-                if (_events[this.EVENT_CHANGE_STATE] && this.state === state) {
-                    this.emit(this.EVENT_CHANGE_STATE, _state);
+                if (_events[this.EVENT_CHANGE_STATE] && this.is(state)) {
+                    this.emit(this.EVENT_CHANGE_STATE, state);
                 }
             }
         }
@@ -163,11 +171,12 @@ State.prototype.setState = function (state, args) {
 State.prototype.onState = function (state, listener, context) {
     var event = (listener instanceof Event) ? listener : new Event(state, listener, context);
     var _state = state || event.type;
-    var _listener = event.listener;
-    var _context = context || event.context || this;
-    var currentEvent = EventEmitter.event;
 
-    if (this.state === _state) {
+    if (this.is(_state)) {
+        var currentEvent = EventEmitter.event;
+        var _listener = event.listener;
+        var _context = context || event.context || this;
+
         EventEmitter.event = event;
 
         if (typeof _listener === 'function') {
@@ -205,7 +214,7 @@ State.prototype.onceState = function (state, listener, context) {
     var event = (listener instanceof Event) ? listener : new Event(state, listener, context);
     event.isOnce = true;
 
-    return this.onState(state, event, context || event.context);
+    return this.onState(state, event, context);
 };
 
 /**
@@ -466,7 +475,7 @@ Response.prototype.emit = function (type, args) {
         try {
             result = emit.apply(this, arguments);
         } catch (error) {
-            if (this.state === this.STATE_REJECTED) {
+            if (this.isRejected()) {
                 this.stateData[0] = toError(error);
             } else {
                 this.reject(error);
@@ -484,11 +493,11 @@ Response.prototype.emit = function (type, args) {
  * @returns {Response}
  */
 Response.prototype.onState = function (state, listener, context) {
-    if (this.state === state) {
+    if (this.is(state)) {
         try {
             State.prototype.onState.call(this, state, listener, context);
         } catch (error) {
-            if (this.state === this.STATE_REJECTED) {
+            if (this.isRejected()) {
                 this.stateData[0] = toError(error);
             } else {
                 this.reject(error);
@@ -542,7 +551,7 @@ Response.prototype.reject = function (reason) {
  * @returns {Response}
  */
 Response.prototype.progress = function (progress) {
-    if (this.state === this.STATE_PENDING && this._events && this._events[this.EVENT_PROGRESS]) {
+    if (this.isPending() && this._events && this._events[this.EVENT_PROGRESS]) {
         this.emit(this.EVENT_PROGRESS, progress);
     }
 
@@ -554,7 +563,7 @@ Response.prototype.progress = function (progress) {
  * @returns {Boolean}
  */
 Response.prototype.isPending = function () {
-    return this.state === this.STATE_PENDING;
+    return this.is(this.STATE_PENDING);
 };
 
 /**
@@ -562,7 +571,7 @@ Response.prototype.isPending = function () {
  * @returns {Boolean}
  */
 Response.prototype.isResolved = function () {
-    return this.state === this.STATE_RESOLVED;
+    return this.is(this.STATE_RESOLVED);
 };
 
 /**
@@ -570,7 +579,7 @@ Response.prototype.isResolved = function () {
  * @returns {Boolean}
  */
 Response.prototype.isRejected = function () {
-    return this.state === this.STATE_REJECTED;
+    return this.is(this.STATE_REJECTED);
 };
 
 /**
@@ -655,11 +664,11 @@ Response.prototype.onProgress = function (listener, context) {
  * @this {Response}
  */
 Response.prototype.notify = function (parent) {
-    if (parent === this) {
-        throw new Error('Can\'t notify itself');
-    }
+    if (parent) {
+        if (parent === this) {
+            throw new Error('Can\'t notify itself');
+        }
 
-    if (parent && Response.isResponse(parent)) {
         this.then(parent.resolve, parent.reject, parent.progress, parent);
     }
 
@@ -702,7 +711,7 @@ Response.prototype.listen = function (response) {
         throw new Error('Cannot listen on itself');
     }
 
-    if (this.state !== this.STATE_PENDING) {
+    if (!this.isPending()) {
         this.pending();
     }
 
@@ -858,7 +867,7 @@ Response.prototype.invoke = function (method, args) {
             arg[index] = arguments[index + 1];
         }
 
-        if (this.state !== this.STATE_PENDING) {
+        if (!this.isPending()) {
             this.pending();
         }
 
@@ -888,13 +897,19 @@ Response.prototype.spread = function (callback, context) {
 /**
  *
  * @example
- * new Response()
+ * var r = new Response()
  *   .resolve(3) // resolve one result
  *   .getResult() // 3, returns result
+ *
+ * r
  *   .resolve(1, 2) // resolve more results
  *   .getResult() // [1, 2], returns a results array
- *   .getResult(1) // 2, returns result on a index
- *   .getResult(['foo', 'bar']) // {foo: 1, bar: 2}, returns a hash results
+ *
+ * r.getResult(1) // 2, returns result on a index
+ *
+ * r.getResult(['foo', 'bar']) // {foo: 1, bar: 2}, returns a hash results
+ *
+ * r
  *   .setKeys(['foo', 'bar']) // sets a default keys
  *   .getResult('bar') // 2, returns result on a default key
  *
@@ -903,7 +918,7 @@ Response.prototype.spread = function (callback, context) {
  * @returns {*|null}
  */
 Response.prototype.getResult = function (key) {
-    if (this.state !== this.STATE_RESOLVED) {
+    if (!this.isResolved()) {
         return null;
     }
 
@@ -955,7 +970,7 @@ Response.prototype.getResult = function (key) {
  * @returns {Error|null}
  */
 Response.prototype.getReason = function () {
-    return this.state === this.STATE_REJECTED ? this.stateData[0] : null;
+    return this.isRejected() ? this.stateData[0] : null;
 };
 
 /**
@@ -1080,7 +1095,7 @@ Queue.prototype.start = function () {
         this.item = stack.shift();
         this.setState(this.STATE_START);
 
-        if (this.state !== this.STATE_START) {
+        if (!this.is(this.STATE_START)) {
             return this;
         }
 
@@ -1100,7 +1115,7 @@ Queue.prototype.start = function () {
                 return this;
             }
 
-            if (this.state !== this.STATE_START) {
+            if (!this.is(this.STATE_START)) {
                 return this;
             }
         }
@@ -1113,13 +1128,13 @@ Queue.prototype.start = function () {
 
         this.emit(this.EVENT_NEXT_ITEM, item);
 
-        if (this.state !== this.STATE_START) {
+        if (!this.is(this.STATE_START)) {
             return this;
         }
 
         this.stateData.push(item);
 
-        if (item && Response.isResponse(item) && item.state === item.STATE_PENDING) {
+        if (item && Response.isResponse(item) && item.isPending()) {
             item.always(this.start, this);
             return this;
         }
