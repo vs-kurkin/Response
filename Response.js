@@ -1134,7 +1134,7 @@ Queue.prototype.start = function () {
 
         this.stateData.push(item);
 
-        if (item && Response.isResponse(item) && item.isPending()) {
+        if (item && Response.isResponse(item)) {
             item.always(this.start, this);
             return this;
         }
