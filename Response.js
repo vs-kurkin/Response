@@ -126,14 +126,14 @@ State.prototype.setState = function (state, args) {
                 this.stateData[index] = arguments[index + 1];
             }
 
-            if (this.eventData) {
-                this.eventData.length = 0;
-                push.apply(this.eventData, this.stateData);
+            if (this._eventData) {
+                this._eventData.length = 0;
+                push.apply(this._eventData, this.stateData);
             }
         }
 
         if (!this.is(state)) {
-            this.stopEmit();
+            this.stopEmit(this.state);
             this.state = state;
 
             _events = this._events;
@@ -173,19 +173,14 @@ State.prototype.onState = function (state, listener, context) {
     var _state = state || event.type;
 
     if (this.is(_state)) {
-        var currentEvent = EventEmitter.event;
         var _listener = event.listener;
         var _context = context || event.context || this;
-
-        EventEmitter.event = event;
 
         if (typeof _listener === 'function') {
             _listener.apply(_context, this.stateData);
         } else {
             _listener.emit.apply(_context, [event.type].concat(this.stateData));
         }
-
-        EventEmitter.event = currentEvent;
 
         if (event.isOnce) {
             return this;
