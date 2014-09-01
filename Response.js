@@ -90,9 +90,9 @@ State.prototype.stateData = null;
 State.prototype.reset = State;
 
 /**
- *
- * @param {String|Number} state
- * @returns {boolean}
+ * Сравнивает текущее состояние объекта со значение state.
+ * @param {String|Number} state Состояние, с которым необходимо ставнить текущее.
+ * @returns {Boolean} Результат сравнения.
  */
 State.prototype.is = function (state) {
     return this.state === state;
@@ -170,9 +170,8 @@ State.prototype.setState = function (state, args) {
  */
 State.prototype.onState = function (state, listener, context) {
     var event = (listener instanceof Event) ? listener : new Event(state, listener, context);
-    var _state = state || event.type;
 
-    if (this.is(_state)) {
+    if (this.is(state)) {
         var _listener = event.listener;
         var _context = context || event.context || this;
 
@@ -187,7 +186,7 @@ State.prototype.onState = function (state, listener, context) {
         }
     }
 
-    return this.on(_state, event);
+    return this.on(state, event);
 };
 
 /**
@@ -911,6 +910,7 @@ Response.prototype.spread = function (callback, context) {
  *
  * @param {String|Number|Array|Arguments} [key=this.keys]
  * @returns {*|null}
+ * @throws {Error}
  */
 Response.prototype.getResult = function (key) {
     if (!this.isResolved()) {
@@ -926,6 +926,10 @@ Response.prototype.getResult = function (key) {
 
     switch (getType(keys)) {
         case 'String':
+            if (!isArray(this.keys)) {
+                throw new Error('Default keys must be a array');
+            }
+
             index = this.keys.length;
 
             while (index--) {
