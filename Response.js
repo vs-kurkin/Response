@@ -39,13 +39,16 @@ State.isState = function (object) {
  * @static
  * @returns {Object}
  * @example
- * var obj = State.create();
- * obj instanceof State; // true
- * obj.hasOwnProperty('state'); // false
+ * function Const () {}
+ *
+ * Const.prototype = State.create(Const);
+ *
+ * new Const() instanceof State; // true
+ * Const.prototype.constructor === Const; // true
  */
 State.create = create;
 
-inherits(State, EventEmitter);
+State.prototype = inherits(State, EventEmitter);
 
 State.prototype.EventEmitter = EventEmitter;
 
@@ -355,7 +358,7 @@ Response.strictQueue = function (args) {
     return new Queue(stack).strict();
 };
 
-inherits(Response, State);
+Response.prototype = State.create(Response);
 
 Response.prototype.State = State;
 
@@ -1007,7 +1010,7 @@ Queue.isQueue = function (object) {
     return object instanceof Queue;
 };
 
-inherits(Queue, Response);
+Queue.prototype = Response.create(Queue);
 
 Queue.prototype.Response = Response;
 
@@ -1264,9 +1267,17 @@ function toError(value) {
     return value == null || getType(value) !== 'Error' ? new Error(value) : value;
 }
 
-function Constructor(constructor) {
+function Constructor(constructor, base) {
     if (constructor) {
         this.constructor = constructor;
+    }
+
+    if (base) {
+        for (var name in base.prototype) {
+            if (base.prototype.hasOwnProperty(name)) {
+                this[name] = base.prototype[name];
+            }
+        }
     }
 
     Constructor.prototype = null;
@@ -1275,21 +1286,9 @@ function Constructor(constructor) {
 function inherits(constructor, base) {
     Constructor.prototype = base.prototype;
 
-    var prototype = new Constructor();
-
-    for (var name in base.prototype) {
-        if (base.prototype.hasOwnProperty(name)) {
-            prototype[name] = base.prototype[name];
-        }
-    }
-
-    prototype.constructor = constructor;
-
-    constructor.__base = base;
-    constructor.prototype = prototype;
+    return new Constructor(constructor, base);
 }
 
-function create() {
-    Constructor.prototype = new this();
-    return new Constructor(this);
+function create(constructor) {
+    return inherits(constructor, this);
 }
