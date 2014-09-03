@@ -840,7 +840,7 @@ Response.prototype.getCallback = function () {
  * @param {Function|String} method
  * @param {...*} [args]
  * @throws {Error} Бросает исключение, если методом является строка и response не привязан к объекту, либо метод не является функцией.
- * @returns {Response}
+ * @returns {*} Результат работы метода method
  */
 Response.prototype.invoke = function (method, args) {
     var context = this.context == null ? this : this.context;
@@ -869,15 +869,13 @@ Response.prototype.invoke = function (method, args) {
         }
 
         try {
-            _method.apply(context, arg);
+            return _method.apply(context, arg);
         } catch (error) {
-            this.reject(error);
+            return this.reject(error);
         }
-    } else {
-        throw new Error('Method is not a function.');
     }
 
-    return this;
+    throw new Error('Method is not a function.');
 };
 
 /**
