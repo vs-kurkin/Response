@@ -48,7 +48,7 @@ State.isState = function (object) {
  */
 State.create = create;
 
-State.prototype = inherits(State, EventEmitter);
+State.prototype = create.call(EventEmitter, State);
 
 State.prototype.EventEmitter = EventEmitter;
 
@@ -75,22 +75,32 @@ State.prototype.state = null;
 State.prototype.stateData = null;
 
 /**
- * Сбрасывает объект в указанное состояние и удаляет данные.
- * Никакие события при этом не вызываются.
+ * Сбрасывает объект в первоначальное состояние.
+ * Так же удаляются все обработчики событий.
  * @function
- * @param {String|Number} [state] Состояние, в которое необходимо сбросить объект.
  * @returns {State}
  * @example
- * new State()
- *  .onChangeState(function (state) {
- *    console.log(state); // only 'foo'
- *  })
- *  .setState('foo')
- *  .reset('bar');
- *
- * console.log(inst.state); // bar
+ * new State('foo')
+ *  .reset()
+ *  .state; // null
  */
-State.prototype.reset = State;
+State.prototype.reset = function () {
+    return this.constructor();
+};
+
+/**
+ * Обнуляет все собственные свойства объекта.
+ * @returns {State}
+ */
+State.prototype.destroy = function () {
+    for (var property in this) {
+        if (this.hasOwnProperty(property)) {
+            this[property] = null;
+        }
+    }
+
+    return this;
+};
 
 /**
  * Сравнивает текущее состояние объекта со значение state.
@@ -438,12 +448,6 @@ Response.prototype.setKeys = function (keys) {
 
 /**
  *
- * @returns {Response}
- */
-Response.prototype.reset = Response;
-
-/**
- *
  * @param {Function} callback
  * @param {Object} [context=this]
  * @returns {Function}
@@ -560,7 +564,7 @@ Response.prototype.progress = function (progress) {
  * @returns {Boolean}
  */
 Response.prototype.isPending = function () {
-    return this.is(this.STATE_PENDING);
+    return !(this.isResolved() || this.isRejected());
 };
 
 /**
@@ -685,19 +689,6 @@ Response.prototype.notify = function (parent) {
  *     resolve('success');
  *   }));
  *
- * new Response()
- *   .then(function (result) {
- *     // result is 'foo' here
- *     this.isResolved(); // true
- *     this.listen(Response.resolve('bar'));
- *     this.isResolved(); // false
- *   })
- *   .then(function (result) {
- *     // result is 'bar' here
- *     this.isResolved(); // true
- *   })
- *   .resolve('foo');
- *
  * @param {Response|Object} response
  * @throws {Error} Бросает исключение, если response равен this.
  * @returns {Response}
@@ -722,11 +713,7 @@ Response.prototype.listen = function (response) {
  * @returns {Response}
  */
 Response.prototype.done = function () {
-    this
-        .onceState(this.STATE_RESOLVED, this.reset)
-        .onceState(this.STATE_REJECTED, this.reset);
-
-    return this;
+    return this.always(this.destroy);
 };
 
 /**
@@ -1060,33 +1047,6 @@ Queue.prototype.item = null;
  *
  * @returns {Queue}
  */
-Queue.prototype.reset = function () {
-    var stateData = this.stateData;
-    var length = stateData.length;
-    var index = 0;
-    var response;
-
-    while (index < length) {
-        response = stateData[index++];
-
-        if (Response.isResponse(response)) {
-            response.reset();
-        }
-    }
-
-    stateData.length = 0;
-
-    this.item = null;
-    this.stack.length = 0;
-    this.Response();
-
-    return this;
-};
-
-/**
- *
- * @returns {Queue}
- */
 Queue.prototype.start = function () {
     var stack = this.stack;
     var item = this.item;
@@ -1134,7 +1094,7 @@ Queue.prototype.start = function () {
 
         this.stateData.push(item);
 
-        if (item && Response.isResponse(item)) {
+        if (item && Response.isResponse(item) && item.isPending()) {
             item.always(this.start, this);
             return this;
         }
@@ -1265,28 +1225,22 @@ function toError(value) {
     return value == null || getType(value) !== 'Error' ? new Error(value) : value;
 }
 
-function Constructor(constructor, base) {
+function Constructor(constructor) {
     if (constructor) {
         this.constructor = constructor;
     }
 
-    if (base) {
-        for (var name in base.prototype) {
-            if (base.prototype.hasOwnProperty(name)) {
-                this[name] = base.prototype[name];
-            }
+    for (var property in Constructor.prototype) {
+        if (Constructor.prototype.hasOwnProperty(property)) {
+            this[property] = Constructor.prototype[property];
         }
     }
 
     Constructor.prototype = null;
 }
 
-function inherits(constructor, base) {
-    Constructor.prototype = base.prototype;
-
-    return new Constructor(constructor, base);
-}
-
 function create(constructor) {
-    return inherits(constructor, this);
+    Constructor.prototype = this.prototype;
+
+    return new Constructor(constructor);
 }
