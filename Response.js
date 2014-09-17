@@ -5,7 +5,6 @@
 
 var EventEmitter = require('EventEmitter');
 var Event = EventEmitter.Event;
-var push = Array.prototype.push;
 var toString = Object.prototype.toString;
 var emit = EventEmitter.prototype.emit;
 
@@ -17,7 +16,8 @@ var emit = EventEmitter.prototype.emit;
  * @extends EventEmitter
  */
 function State(state) {
-    this.EventEmitter();
+    EventEmitter.call(this);
+
     this.state = state || this.state;
     this.stateData = new Array(0);
 
@@ -49,8 +49,6 @@ State.isState = function (object) {
 State.create = create;
 
 State.prototype = create.call(EventEmitter, State);
-
-State.prototype.EventEmitter = EventEmitter;
 
 /**
  * Событие изменения состояния.
@@ -117,7 +115,7 @@ State.prototype.is = function (state) {
  * Затем событие {@link State#EVENT_CHANGE_STATE}.
  * Если новое состояние не передано или объект уже находится в указаном состоянии, события не будут вызваны.
  * @param {String|Number} state Новое сотояние объекта.
- * @param {...*} [args] Данные, которые будут переданы в аргументы обработчикам нового состояния.
+ * @param {Array} [data] Данные, которые будут переданы в аргументы обработчикам нового состояния.
  * @returns {State}
  * @example
  * new State()
@@ -127,43 +125,40 @@ State.prototype.is = function (state) {
  *   })
  *   .setState('foo', 'baz');
  */
-State.prototype.setState = function (state, args) {
-    var index = arguments.length;
-    var _events;
+State.prototype.setState = function (state, data) {
+    var index = data ? data.length : 0;
+    var _setState = !this.is(state);
 
-    if (index--) {
-        if (!this.is(state) || index) {
-            this.stateData.length = index;
+    if (data && (_setState || index)) {
+        copy(data, this.stateData);
 
-            while (index--) {
-                this.stateData[index] = arguments[index + 1];
-            }
-
-            if (this._eventData) {
-                this._eventData.length = 0;
-                push.apply(this._eventData, this.stateData);
-            }
-        }
-
-        if (!this.is(state)) {
-            this.stopEmit(this.state);
-            this.state = state;
-
-            _events = this._events;
-
-            if (_events) {
-                if (_events[state]) {
-                    this.emit.apply(this, arguments);
-                }
-
-                if (_events[this.EVENT_CHANGE_STATE] && this.is(state)) {
-                    this.emit(this.EVENT_CHANGE_STATE, state);
-                }
-            }
+        if (this._eventData) {
+            copy(data, this._eventData);
         }
     }
 
+    if (_setState) {
+        this.__changeState(state, data);
+    }
+
     return this;
+};
+
+State.prototype.__changeState = function (state, data) {
+    var _events = this._events;
+
+    this.stopEmit(this.state);
+    this.state = state;
+
+    if (_events) {
+        if (_events[state]) {
+            this.emit.apply(this, new Array(String(state)).concat(data));
+        }
+
+        if (_events[this.EVENT_CHANGE_STATE] && this.is(state)) {
+            this.emit(this.EVENT_CHANGE_STATE, state);
+        }
+    }
 };
 
 /**
@@ -191,7 +186,7 @@ State.prototype.onState = function (state, listener, context) {
         if (typeof _listener === 'function') {
             _listener.apply(_context, this.stateData);
         } else {
-            _listener.emit.apply(_context, [event.type].concat(this.stateData));
+            _listener.emit.apply(_context, new Array(String(event.type)).concat(this.stateData));
         }
 
         if (event.isOnce) {
@@ -278,6 +273,16 @@ function Response(wrapper) {
 
     return this;
 }
+
+/**
+ * @type {State}
+ */
+Response.State = State;
+
+/**
+ * @type {Queue}
+ */
+Response.Queue = Queue;
 
 /**
  *
@@ -465,7 +470,7 @@ Response.prototype.bind = function (callback, context) {
 };
 
 /**
- * @param {string} type Тип события.
+ * @param {String} type Тип события.
  * @param {...*} [args] Аргументы, передаваемые в обработчик события.
  * @returns {Boolean}
  */
@@ -496,7 +501,7 @@ Response.prototype.emit = function (type, args) {
 Response.prototype.onState = function (state, listener, context) {
     if (this.is(state)) {
         try {
-            State.prototype.onState.call(this, state, listener, context);
+            this.__onState(state, listener, context);
         } catch (error) {
             if (this.isRejected()) {
                 this.stateData[0] = toError(error);
@@ -510,6 +515,8 @@ Response.prototype.onState = function (state, listener, context) {
 
     return this;
 };
+
+Response.prototype.__onState = State.prototype.onState;
 
 /**
  *
@@ -526,11 +533,14 @@ Response.prototype.pending = function () {
  * @returns {Response}
  */
 Response.prototype.resolve = function (results) {
-    var stateData = [this.STATE_RESOLVED];
+    var index = arguments.length;
+    var data = new Array(index);
 
-    push.apply(stateData, arguments);
+    while (index--) {
+        data[index] = arguments[index];
+    }
 
-    this.setState.apply(this, stateData);
+    this.setState(this.STATE_RESOLVED, data);
 
     return this;
 };
@@ -541,7 +551,7 @@ Response.prototype.resolve = function (results) {
  * @returns {Response}
  */
 Response.prototype.reject = function (reason) {
-    this.setState(this.STATE_REJECTED, reason != null ? toError(reason) : reason);
+    this.setState(this.STATE_REJECTED, new Array(reason == null ? 0 : toError(reason)));
 
     return this;
 };
@@ -759,16 +769,13 @@ Response.prototype.callback = function defaultResponseCallback(error, results) {
  * @example
  * var Response = require('Response');
  * var r = new Response()
- *
- * function callback (data, textStatus, jqXHR) {
- *   if (data && !data.error) {
- *      this.resolve(data.result);
- *   } else {
- *      this.reject(data.error);
- *   }
- * }
- *
- * r.bind(callback);
+ *   .bind(function (data, textStatus, jqXHR) {
+ *     if (data && data.error) {
+ *        this.reject(data.error);
+ *     } else {
+ *        this.resolve(data.result);
+ *     }
+ *   });
  *
  * $.getJSON('ajax/test.json', r.callback);
  *
@@ -981,6 +988,7 @@ function Queue(stack, start) {
 
     this.stack = isArray(stack) ? stack : new Array(0);
     this.item = null;
+    this.isStrict = this.isStrict;
 
     if (getType(start) === 'Boolean' ? start.valueOf() : false) {
         this.start();
@@ -1018,18 +1026,6 @@ Queue.prototype.STATE_STOP = Queue.prototype.STATE_PENDING;
 Queue.prototype.EVENT_NEXT_ITEM = 'nextItem';
 
 /**
- * @default 'resolveItem'
- * @type {String}
- */
-Queue.prototype.EVENT_RESOLVE_ITEM = 'resolveItem';
-
-/**
- * @default 'rejectItem'
- * @type {String}
- */
-Queue.prototype.EVENT_REJECT_ITEM = 'rejectItem';
-
-/**
  * @readonly
  * @type {Array}
  * @default null
@@ -1044,12 +1040,23 @@ Queue.prototype.stack = null;
 Queue.prototype.item = null;
 
 /**
+ * @readonly
+ * @default false
+ * @type {Boolean}
+ */
+Queue.prototype.isStrict = false;
+
+/**
  *
  * @returns {Queue}
  */
 Queue.prototype.start = function () {
     var stack = this.stack;
     var item = this.item;
+
+    if (!this.isPending()) {
+        return this;
+    }
 
     while (stack.length) {
         this.item = stack.shift();
@@ -1082,10 +1089,6 @@ Queue.prototype.start = function () {
 
         item = this.item;
 
-        if (item === this) {
-            continue;
-        }
-
         this.emit(this.EVENT_NEXT_ITEM, item);
 
         if (!this.is(this.STATE_START)) {
@@ -1094,9 +1097,23 @@ Queue.prototype.start = function () {
 
         this.stateData.push(item);
 
-        if (item && Response.isResponse(item) && item.isPending()) {
-            item.always(this.start, this);
-            return this;
+        if (item && Response.isResponse(item)) {
+            if (item === this) {
+                continue;
+            }
+
+            if (this.isStrict) {
+                item.onReject(this.reject, this);
+            }
+
+            if (!this.is(this.STATE_START)) {
+                return this;
+            }
+
+            if (item.isPending()) {
+                item.always(this.start, this);
+                return this;
+            }
         }
     }
 
@@ -1113,8 +1130,8 @@ Queue.prototype.start = function () {
  * @returns {Queue}
  */
 Queue.prototype.stop = function () {
-    this.item = null;
     this.setState(this.STATE_STOP);
+    this.item = null;
 
     return this;
 };
@@ -1124,7 +1141,23 @@ Queue.prototype.stop = function () {
  * @returns {Queue}
  */
 Queue.prototype.push = function (args) {
-    push.apply(this.stack, arguments);
+    var index = arguments.length;
+    var stackIndex = this.stack.length;
+
+    while (index--) {
+        this.stack[stackIndex++] = arguments[index];
+    }
+
+    return this;
+};
+
+/**
+ * @param {Boolean} [flag=true]
+ * @returns {Queue}
+ */
+Queue.prototype.strict = function (flag) {
+    this.isStrict = arguments.length ? Boolean(flag) : true;
+
     return this;
 };
 
@@ -1162,52 +1195,6 @@ Queue.prototype.onNextItem = function (listener, context) {
 };
 
 /**
- *
- * @param {Function|EventEmitter|Event} listener
- * @param {Object} [context=this]
- * @returns {Queue}
- */
-Queue.prototype.onResolveItem = function (listener, context) {
-    this.on(this.EVENT_RESOLVE_ITEM, listener, context);
-    return this;
-};
-
-/**
- *
- * @param {Function|EventEmitter|Event} listener
- * @param {Object} [context=this]
- * @returns {Queue}
- */
-Queue.prototype.onRejectItem = function (listener, context) {
-    this.on(this.EVENT_REJECT_ITEM, listener, context);
-    return this;
-};
-
-/**
- * @param {Boolean} [flag=true]
- * @returns {Queue}
- */
-Queue.prototype.strict = function (flag) {
-    this.off(this.EVENT_REJECT_ITEM, this.reject);
-
-    if (flag !== false) {
-        this.on(this.EVENT_REJECT_ITEM, this.reject);
-    }
-
-    return this;
-};
-
-/**
- * @type {Queue}
- */
-Response.Queue = Queue;
-
-/**
- * @type {State}
- */
-Response.State = State;
-
-/**
  * Exports: {@link Response}
  * @exports Response
  */
@@ -1223,6 +1210,16 @@ function isArray(value) {
 
 function toError(value) {
     return value == null || getType(value) !== 'Error' ? new Error(value) : value;
+}
+
+function copy(from, to) {
+    var index = from.length;
+
+    to.length = index;
+
+    while (index--) {
+        to[index] = from[index];
+    }
 }
 
 function Constructor(constructor) {

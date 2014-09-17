@@ -1,7 +1,7 @@
 {
     "name": "Response",
     "author": "Vladislav Kurkin <b-vladi@cs-console.ru> (https://github.com/B-Vladi)",
-    "version": "0.0.11",
+    "version": "0.0.12",
     "main": "Response.js",
     "license": "MIT",
     "repository": {
@@ -13,6 +13,9 @@
     },
     "dependencies": {
         "EventEmitter": "B-Vladi/EventEmitter"
+    },
+    "devDependencies": {
+        "node-optimize-stat": "B-Vladi/node-optimize-stat"
     },
     "bugs": {
         "email": "b-vladi@cs-console.ru",
