@@ -160,7 +160,7 @@ State.prototype.__changeState = function (state, data) {
 
     if (_events) {
         if (_events[state]) {
-            this.emit.apply(this, new Array(String(state)).concat(data));
+            this.emit.apply(this, wrap(state).concat(data));
         }
 
         if (_events[this.EVENT_CHANGE_STATE] && this.is(state)) {
@@ -194,7 +194,7 @@ State.prototype.onState = function (state, listener, context) {
         if (typeof _listener === 'function') {
             _listener.apply(_context, this.stateData);
         } else {
-            _listener.emit.apply(_context, new Array(String(event.type)).concat(this.stateData));
+            _listener.emit.apply(_context, wrap(event.type).concat(this.stateData));
         }
 
         if (event.isOnce) {
@@ -1215,16 +1215,16 @@ function getType(object) {
 }
 
 function isArray(value) {
-    return value != null && getType(value) === 'Array';
+    return value && getType(value) === 'Array';
 }
 
-function toArray(array) {
-    if (getType(array) === 'Array') {
-        return array;
-    }
+function toArray(object) {
+    return getType(object) === 'Array' ? object : wrap(object);
+}
 
+function wrap(item) {
     var _array = new Array(1);
-    _array[0] = array;
+    _array[0] = item;
     return _array;
 }
 
