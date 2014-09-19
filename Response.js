@@ -135,9 +135,9 @@ State.prototype.is = function (state) {
  */
 State.prototype.setState = function (state, data) {
     var _state = !this.is(state);
-    var _data = isArray(data) ? data : new Array(data);
+    var _data = arguments.length > 1 && toArray(data);
 
-    if (arguments.length > 1 && (_state || _data.length)) {
+    if (_data && (_state || _data.length)) {
         copy(_data, this.stateData);
 
         if (this._eventData) {
@@ -1215,7 +1215,17 @@ function getType(object) {
 }
 
 function isArray(value) {
-    return !(value == null || getType(value) !== 'Array');
+    return value != null && getType(value) === 'Array';
+}
+
+function toArray(array) {
+    if (getType(array) === 'Array') {
+        return array;
+    }
+
+    var _array = new Array(1);
+    _array[0] = array;
+    return _array;
 }
 
 function toError(value) {
