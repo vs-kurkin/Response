@@ -115,7 +115,8 @@ State.prototype.is = function (state) {
  * Затем событие {@link State#EVENT_CHANGE_STATE}.
  * Если новое состояние не передано или объект уже находится в указаном состоянии, события не будут вызваны.
  * @param {String|Number} state Новое сотояние объекта.
- * @param {Array} [data] Данные, которые будут переданы в аргументы обработчикам нового состояния.
+ * @param {Array/*} [data] Данные, которые будут переданы аргументом в обработчики нового состояния.
+ *                         Если был передан массив, аргументами для обработчиков будут его элементы.
  * @returns {State}
  * @example
  * new State()
@@ -124,21 +125,28 @@ State.prototype.is = function (state) {
  *     this.state; // 'foo'
  *   })
  *   .setState('foo', 'baz');
+ *
+ * new State()
+ *   .onState('foo', function (bar, baz) {
+ *     bar; // true
+ *     baz; // false
+ *   })
+ *   .setState('foo', [true, false]);
  */
 State.prototype.setState = function (state, data) {
-    var index = data ? data.length : 0;
-    var _setState = !this.is(state);
+    var _state = !this.is(state);
+    var _data = isArray(data) ? data : new Array(data);
 
-    if (data && (_setState || index)) {
-        copy(data, this.stateData);
+    if (arguments.length > 1 && (_state || _data.length)) {
+        copy(_data, this.stateData);
 
         if (this._eventData) {
-            copy(data, this._eventData);
+            copy(_data, this._eventData);
         }
     }
 
-    if (_setState) {
-        this.__changeState(state, data);
+    if (_state) {
+        this.__changeState(state, _data);
     }
 
     return this;
@@ -238,7 +246,8 @@ State.prototype.onChangeState = function (listener, context) {
 
 /**
  * Отменяет обработку изменения состояния.
- * @param {Function|EventEmitter|Event} [listener] Обработчик, который необходимо отменить. Если обработчик не был передан, будут отменены все обработчики.
+ * @param {Function|EventEmitter|Event} [listener] Обработчик, который необходимо отменить.
+ *                                                 Если обработчик не был передан, будут отменены все обработчики.
  * @returns {State}
  */
 State.prototype.offChangeState = function (listener) {
@@ -833,7 +842,8 @@ Response.prototype.getCallback = function () {
  *
  * @param {Function|String} method
  * @param {...*} [args]
- * @throws {Error} Бросает исключение, если методом является строка и response не привязан к объекту, либо метод не является функцией.
+ * @throws {Error} Бросает исключение, если методом является строка и response не привязан к объекту,
+ *                 либо метод не является функцией.
  * @returns {*} Результат работы метода method
  */
 Response.prototype.invoke = function (method, args) {
