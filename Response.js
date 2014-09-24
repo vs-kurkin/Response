@@ -18,7 +18,7 @@ var emit = EventEmitter.prototype.emit;
 function State(state) {
     EventEmitter.call(this);
 
-    this.state = state || this.state;
+    this.state = arguments.length ? state : this.state;
     this.stateData = new Array(0);
 
     return this;
