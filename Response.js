@@ -4,9 +4,8 @@
  */
 
 var EventEmitter = require('EventEmitter');
-var Event = EventEmitter.Event;
 var toString = Object.prototype.toString;
-var emit = EventEmitter.prototype.emit;
+var nativeEmit = EventEmitter.prototype.emit;
 
 /**
  *
@@ -115,7 +114,7 @@ State.prototype.is = function (state) {
  * Затем событие {@link State#EVENT_CHANGE_STATE}.
  * Если новое состояние не передано или объект уже находится в указаном состоянии, события не будут вызваны.
  * @param {String|Number} state Новое сотояние объекта.
- * @param {Array/*} [data] Данные, которые будут переданы аргументом в обработчики нового состояния.
+ * @param {Array|*} [data] Данные, которые будут переданы аргументом в обработчики нового состояния.
  *                         Если был передан массив, аргументами для обработчиков будут его элементы.
  * @returns {State}
  * @example
@@ -138,10 +137,10 @@ State.prototype.setState = function (state, data) {
     var _data = arguments.length > 1 && toArray(data);
 
     if (_data && (_state || _data.length)) {
-        copy(_data, this.stateData);
+        this.stateData = _data;
 
-        if (this._eventData) {
-            copy(_data, this._eventData);
+        if (this._event) {
+            this._event.data = _data;
         }
     }
 
@@ -152,15 +151,21 @@ State.prototype.setState = function (state, data) {
     return this;
 };
 
+/**
+ *
+ * @param {String|Number} state
+ * @param {Array} data
+ * @private
+ */
 State.prototype.__changeState = function (state, data) {
-    var _events = this._events;
-
     this.stopEmit(this.state);
+
+    var _events = this._events;
     this.state = state;
 
     if (_events) {
         if (_events[state]) {
-            this.emit.apply(this, wrap(state).concat(data));
+            emit(this, state, data);
         }
 
         if (_events[this.EVENT_CHANGE_STATE] && this.is(state)) {
@@ -173,7 +178,7 @@ State.prototype.__changeState = function (state, data) {
  * Регистрирует обработчик состояния.
  * Если объект уже находится в указанном состоянии, обработчик будет вызван немедленно.
  * @param {String|Number} state Отслеживаемое состояние.
- * @param {Function|EventEmitter|Event} listener Обработчик состояния.
+ * @param {Function|EventEmitter} listener Обработчик состояния.
  * @param {Object} [context=this] Контекст обработчика состояния.
  * @returns {State}
  * @example
@@ -185,30 +190,17 @@ State.prototype.__changeState = function (state, data) {
  *   .setState('bar');
  */
 State.prototype.onState = function (state, listener, context) {
-    var event = (listener instanceof Event) ? listener : new Event(state, listener, context);
-
     if (this.is(state)) {
-        var _listener = event.listener;
-        var _context = context || event.context || this;
-
-        if (typeof _listener === 'function') {
-            _listener.apply(_context, this.stateData);
-        } else {
-            _listener.emit.apply(_context, wrap(event.type).concat(this.stateData));
-        }
-
-        if (event.isOnce) {
-            return this;
-        }
+        invoke(this, listener, state, context);
     }
 
-    return this.on(state, event);
+    return this.on(state, listener, context);
 };
 
 /**
  * Регистрирует одноразовый обработчик состояния.
  * @param {String|Number} state Отслеживаемое состояние.
- * @param {Function|EventEmitter|Event} [listener] Обработчик состояния.
+ * @param {Function|EventEmitter} [listener] Обрабо1тчик состояния.
  * @param {Object} [context=this] Контекст обработчика состояния.
  * @returns {State}
  * @example
@@ -221,15 +213,18 @@ State.prototype.onState = function (state, listener, context) {
  *   .setState('foo');
  */
 State.prototype.onceState = function (state, listener, context) {
-    var event = (listener instanceof Event) ? listener : new Event(state, listener, context);
-    event.isOnce = true;
+    if (this.is(state)) {
+        invoke(this, listener, state, context);
+    } else {
+        this.once(state, listener, context);
+    }
 
-    return this.onState(state, event, context);
+    return this;
 };
 
 /**
  * Регистрирует обработчик изменения состояния.
- * @param {Function|EventEmitter|Event} listener Обработчик изменения состояния.
+ * @param {Function|EventEmitter} listener Обработчик изменения состояния.
  * @param {Object} [context=this] Контекст обработчика изменения состояния.
  * @returns {State}
  * @example
@@ -246,8 +241,8 @@ State.prototype.onChangeState = function (listener, context) {
 
 /**
  * Отменяет обработку изменения состояния.
- * @param {Function|EventEmitter|Event} [listener] Обработчик, который необходимо отменить.
- *                                                 Если обработчик не был передан, будут отменены все обработчики.
+ * @param {Function|EventEmitter} [listener] Обработчик, который необходимо отменить.
+ *                                           Если обработчик не был передан, будут отменены все обработчики.
  * @returns {State}
  */
 State.prototype.offChangeState = function (listener) {
@@ -277,7 +272,7 @@ function Response(wrapper) {
     this.keys = null;
 
     if (typeof wrapper === 'function') {
-        this.invoke(wrapper);
+        call(wrapper, this);
     }
 
     return this;
@@ -488,13 +483,9 @@ Response.prototype.emit = function (type, args) {
 
     if (this._events && this._events[type]) {
         try {
-            result = emit.apply(this, arguments);
+            result = nativeEmit.apply(this, arguments);
         } catch (error) {
-            if (this.isRejected()) {
-                this.stateData[0] = toError(error);
-            } else {
-                this.reject(error);
-            }
+            setReason(this, error);
         }
     }
 
@@ -503,29 +494,41 @@ Response.prototype.emit = function (type, args) {
 
 /**
  * @param {String|Number} state
- * @param {Function|EventEmitter|Event} listener
+ * @param {Function|EventEmitter} listener
  * @param {Object} [context=this]
  * @returns {Response}
  */
 Response.prototype.onState = function (state, listener, context) {
     if (this.is(state)) {
         try {
-            this.__onState(state, listener, context);
+            invoke(this, listener, state, context);
         } catch (error) {
-            if (this.isRejected()) {
-                this.stateData[0] = toError(error);
-            } else {
-                this.reject(error);
-            }
+            setReason(this, error);
+        }
+    }
+
+    return this.on(state, listener, context);
+};
+
+/**
+ * @param {String|Number} state
+ * @param {Function|EventEmitter} listener
+ * @param {Object} [context=this]
+ * @returns {Response}
+ */
+Response.prototype.onceState = function (state, listener, context) {
+    if (this.is(state)) {
+        try {
+            invoke(this, listener, state, context);
+        } catch (error) {
+            setReason(this, error);
         }
     } else {
-        this.on(state, listener, context);
+        this.once(state, listener, context);
     }
 
     return this;
 };
-
-Response.prototype.__onState = State.prototype.onState;
 
 /**
  *
@@ -604,9 +607,9 @@ Response.prototype.isRejected = function () {
 
 /**
  *
- * @param {Function|EventEmitter|Event} [onResolve]
- * @param {Function|EventEmitter|Event} [onReject]
- * @param {Function|EventEmitter|Event} [onProgress]
+ * @param {Function|EventEmitter} [onResolve]
+ * @param {Function|EventEmitter} [onReject]
+ * @param {Function|EventEmitter} [onProgress]
  * @param {Object} [context=this]
  * @returns {Response}
  */
@@ -628,7 +631,7 @@ Response.prototype.then = function (onResolve, onReject, onProgress, context) {
 
 /**
  *
- * @param {Function|EventEmitter|Event} listener
+ * @param {Function|EventEmitter} listener
  * @param {Object} [context=this]
  * @returns {Response}
  */
@@ -642,7 +645,7 @@ Response.prototype.always = function (listener, context) {
 
 /**
  *
- * @param {Function|EventEmitter|Event} listener
+ * @param {Function|EventEmitter} listener
  * @param {Object} [context=this]
  * @returns {Response}
  */
@@ -654,7 +657,7 @@ Response.prototype.onResolve = function (listener, context) {
 
 /**
  *
- * @param {Function|EventEmitter|Event} listener
+ * @param {Function|EventEmitter} listener
  * @param {Object} [context=this]
  * @returns {Response}
  */
@@ -666,7 +669,7 @@ Response.prototype.onReject = function (listener, context) {
 
 /**
  *
- * @param {Function|EventEmitter|Event} listener
+ * @param {Function|EventEmitter} listener
  * @param {Object} [context=this]
  * @returns {Response}
  */
@@ -765,7 +768,7 @@ Response.prototype.callback = function defaultResponseCallback(error, results) {
                 arg[index] = arguments[index + 1];
             }
 
-            this.resolve.apply(this, arg);
+            call(this.resolve, this, arg);
         } else {
             this.resolve();
         }
@@ -873,7 +876,7 @@ Response.prototype.invoke = function (method, args) {
         }
 
         try {
-            return _method.apply(context, arg);
+            return call(_method, context, arg);
         } catch (error) {
             return this.reject(error);
         }
@@ -888,7 +891,7 @@ Response.prototype.invoke = function (method, args) {
  * @param {Object} [context=this]
  */
 Response.prototype.spread = function (callback, context) {
-    callback.apply(context == null ? this : context, this.stateData);
+    call(callback, context == null ? this : context, this.stateData);
 
     return this;
 };
@@ -1080,7 +1083,7 @@ Queue.prototype.start = function () {
             try {
                 if (item instanceof Response) {
                     if (item.stateData.length) {
-                        this.item = this.item.apply(this, item.stateData);
+                        this.item = call(this.item, this, item.stateData);
                     } else {
                         this.item = this.item();
                     }
@@ -1129,7 +1132,8 @@ Queue.prototype.start = function () {
 
     if (stack.length === 0) {
         this.item = null;
-        this.resolve.apply(this, this.stateData);
+
+        call(this.resolve, this, this.stateData);
     }
 
     return this;
@@ -1173,7 +1177,7 @@ Queue.prototype.strict = function (flag) {
 
 /**
  *
- * @param {Function|EventEmitter|Event} listener
+ * @param {Function|EventEmitter} listener
  * @param {Object} [context=this]
  * @returns {Queue}
  */
@@ -1184,7 +1188,7 @@ Queue.prototype.onStart = function (listener, context) {
 
 /**
  *
- * @param {Function|EventEmitter|Event} listener
+ * @param {Function|EventEmitter} listener
  * @param {Object} [context=this]
  * @returns {Queue}
  */
@@ -1195,7 +1199,7 @@ Queue.prototype.onStop = function (listener, context) {
 
 /**
  *
- * @param {Function|EventEmitter|Event} listener
+ * @param {Function|EventEmitter} listener
  * @param {Object} [context=this]
  * @returns {Queue}
  */
@@ -1232,13 +1236,61 @@ function toError(value) {
     return value == null || getType(value) !== 'Error' ? new Error(value) : value;
 }
 
-function copy(from, to) {
-    var index = from.length;
+function invoke(emitter, listener, state, context) {
+    if (typeof listener === 'function') {
+        call(listener, context == null ? emitter : context, emitter.stateData);
+    } else {
+        emit(listener, state, emitter.stateData);
+    }
+}
 
-    to.length = index;
+function setReason(object, error) {
+    if (object.isRejected()) {
+        object.stateData[0] = toError(error);
+    } else {
+        object.reject(error);
+    }
+}
 
-    while (index--) {
-        to[index] = from[index];
+function call(listener, context, data) {
+    var r;
+
+    switch (data.length) {
+        case 0:
+            r = listener.call(context);
+            break;
+        case 1:
+            r = listener.call(context, data[0]);
+            break;
+        case 2:
+            r = listener.call(context, data[0], data[1]);
+            break;
+        case 3:
+            r = listener.call(context, data[0], data[1], data[2]);
+            break;
+        default:
+            r = listener.apply(context, data);
+    }
+
+    return r;
+}
+
+function emit(emitter, type, data) {
+    switch (data.length) {
+        case 0:
+            emitter.emit(type);
+            break;
+        case 1:
+            emitter.emit(type, data[0]);
+            break;
+        case 2:
+            emitter.emit(type, data[0], data[1]);
+            break;
+        case 3:
+            emitter.emit(type, data[0], data[1], data[2]);
+            break;
+        default:
+            emitter.emit.apply(emitter, wrap(type).concat(data));
     }
 }
 
