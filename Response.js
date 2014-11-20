@@ -145,33 +145,10 @@ State.prototype.setState = function (state, data) {
     }
 
     if (_state) {
-        this.__changeState(state, _data);
+        changeState(this, state, _data);
     }
 
     return this;
-};
-
-/**
- *
- * @param {String|Number} state
- * @param {Array} data
- * @private
- */
-State.prototype.__changeState = function (state, data) {
-    this.stopEmit(this.state);
-
-    var _events = this._events;
-    this.state = state;
-
-    if (_events) {
-        if (_events[state]) {
-            emit(this, state, data);
-        }
-
-        if (_events[this.EVENT_CHANGE_STATE] && this.is(state)) {
-            this.emit(this.EVENT_CHANGE_STATE, state);
-        }
-    }
 };
 
 /**
@@ -1081,18 +1058,9 @@ Queue.prototype.start = function () {
 
         if (typeof this.item === 'function') {
             try {
-                if (item instanceof Response) {
-                    if (item.stateData.length) {
-                        this.item = call(this.item, this, item.stateData);
-                    } else {
-                        this.item = this.item();
-                    }
-                } else {
-                    this.item = this.item(item);
-                }
+                this.item = this.item(item);
             } catch (error) {
-                this.reject(error);
-                return this;
+                return setReason(this, error);
             }
 
             if (!this.is(this.STATE_START)) {
@@ -1249,6 +1217,26 @@ function setReason(object, error) {
         object.stateData[0] = toError(error);
     } else {
         object.reject(error);
+    }
+
+    return object;
+}
+
+function changeState(object, state, data) {
+    var _events = object._events;
+
+    object.stopEmit(object.state);
+
+    object.state = state;
+
+    if (_events) {
+        if (_events[state]) {
+            emit(object, state, data);
+        }
+
+        if (_events[object.EVENT_CHANGE_STATE] && object.is(state)) {
+            object.emit(object.EVENT_CHANGE_STATE, state);
+        }
     }
 }
 
