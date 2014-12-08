@@ -1309,7 +1309,7 @@ function emit(emitter, type, data) {
 }
 
 function Constructor(constructor, parent, sp) {
-    var proto = Constructor.prototype;
+    var prototype = parent.prototype;
     var name;
 
     if (constructor) {
@@ -1326,9 +1326,9 @@ function Constructor(constructor, parent, sp) {
         }
     }
 
-    for (name in proto) {
-        if (proto.hasOwnProperty(name)) {
-            this[name] = proto[name];
+    for (name in prototype) {
+        if (prototype.hasOwnProperty(name)) {
+            this[name] = prototype[name];
         }
     }
 
