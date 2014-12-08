@@ -1282,22 +1282,35 @@ function emit(emitter, type, data) {
     }
 }
 
-function Constructor(constructor) {
+function Constructor(constructor, parent, sp) {
+    var proto = Constructor.prototype;
+    var name;
+
     if (constructor) {
         this.constructor = constructor;
+
+        constructor.prototype = this;
+
+        if (sp === true) {
+            for (name in parent) {
+                if (parent.hasOwnProperty(name)) {
+                    constructor[name] = parent[name];
+                }
+            }
+        }
     }
 
-    for (var property in Constructor.prototype) {
-        if (Constructor.prototype.hasOwnProperty(property)) {
-            this[property] = Constructor.prototype[property];
+    for (name in proto) {
+        if (proto.hasOwnProperty(name)) {
+            this[name] = proto[name];
         }
     }
 
     Constructor.prototype = null;
 }
 
-function create(constructor) {
+function create(constructor, sp) {
     Constructor.prototype = this.prototype;
 
-    return new Constructor(constructor);
+    return new Constructor(constructor, this, sp);
 }
