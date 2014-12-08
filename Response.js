@@ -29,7 +29,7 @@ function State(state) {
  * @returns {Boolean}
  */
 State.isState = function (object) {
-    return object instanceof State;
+    return (object instanceof State) || object && object.isState;
 };
 
 /**
@@ -55,6 +55,13 @@ State.prototype = create.call(EventEmitter, State);
  * @type {String}
  */
 State.prototype.EVENT_CHANGE_STATE = 'changeState';
+
+/**
+ * @type {Boolean}
+ * @const
+ * @default true
+ */
+State.prototype.isState = true;
 
 /**
  * Текущее состояние объекта.
@@ -267,12 +274,12 @@ Response.Queue = Queue;
 
 /**
  *
- * @param {Response|*} [response]
+ * @param {Response|*} [object]
  * @static
  * @returns {Boolean}
  */
-Response.isResponse = function (response) {
-    return response instanceof Response;
+Response.isResponse = function (object) {
+    return (object instanceof Response) || object && object.isResponse;
 };
 
 /**
@@ -381,6 +388,13 @@ Response.prototype.STATE_REJECTED = 'error';
  * @default 'progress'
  */
 Response.prototype.EVENT_PROGRESS = 'progress';
+
+/**
+ * @type {Boolean}
+ * @const
+ * @default true
+ */
+Response.prototype.isResponse = true;
 
 /**
  *
@@ -989,8 +1003,13 @@ function Queue(stack, start) {
 
 Queue.create = create;
 
+/**
+ *
+ * @param {Queue|*} [object]
+ * @returns {Boolean}
+ */
 Queue.isQueue = function (object) {
-    return object instanceof Queue;
+    return (object instanceof Queue) || object && object.isQueue;
 };
 
 Queue.prototype = Response.create(Queue);
@@ -1016,6 +1035,20 @@ Queue.prototype.STATE_STOP = Queue.prototype.STATE_PENDING;
 Queue.prototype.EVENT_NEXT_ITEM = 'nextItem';
 
 /**
+ * @type {Boolean}
+ * @const
+ * @default true
+ */
+State.prototype.isQueue = true;
+
+/**
+ * @readonly
+ * @default false
+ * @type {Boolean}
+ */
+Queue.prototype.isStrict = false;
+
+/**
  * @readonly
  * @type {Array}
  * @default null
@@ -1028,13 +1061,6 @@ Queue.prototype.stack = null;
  * @type {*}
  */
 Queue.prototype.item = null;
-
-/**
- * @readonly
- * @default false
- * @type {Boolean}
- */
-Queue.prototype.isStrict = false;
 
 /**
  *
