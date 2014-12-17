@@ -244,7 +244,7 @@ State.prototype.offChangeState = function (listener) {
  * @param {Function} [wrapper]
  * @constructor
  * @requires EventEmitter
- * @extends State
+ * @extends {State}
  * @returns {Response}
  */
 function Response(wrapper) {
@@ -326,6 +326,24 @@ Response.reject = function (reason) {
     response.stateData[0] = toError(reason);
 
     return response;
+};
+
+/**
+ *
+ * @param {Function|String} method
+ * @param {...*} [args]
+ * @returns {Response}
+ */
+Response.invoke = function (method, args) {
+    var response = new Response().makeCallback();
+    var index = arguments.length;
+    var data = new Array(index);
+
+    while (index--) {
+        data[index] = arguments[index];
+    }
+
+    return call(response, response.invoke, data);
 };
 
 /**
@@ -1067,12 +1085,12 @@ Queue.prototype.item = null;
  * @returns {Queue}
  */
 Queue.prototype.start = function () {
-    var stack = this.stack;
-    var item = this.item;
-
     if (!this.isPending()) {
         return this;
     }
+
+    var stack = this.stack;
+    var item = this.item;
 
     while (stack.length) {
         this.item = stack.shift();
@@ -1109,16 +1127,14 @@ Queue.prototype.start = function () {
                 continue;
             }
 
-            if (this.isStrict) {
-                item.onReject(this.reject, this);
-            }
+            item.onReject(this.isStrict ? this.reject : this.start, this);
 
             if (!this.is(this.STATE_START)) {
                 return this;
             }
 
             if (item.isPending()) {
-                item.always(this.start, this);
+                item.onResolve(this.start, this);
                 return this;
             }
         }
@@ -1202,6 +1218,20 @@ Queue.prototype.onNextItem = function (listener, context) {
     return this;
 };
 
+Queue.prototype.destroyItems = function () {
+    var index = this.stateData.length;
+
+    while (index) {
+        var item = this.stateData[--index];
+
+        if (State.isState(item)) {
+            item.destroy();
+        }
+    }
+
+    return this;
+};
+
 /**
  * Exports: {@link Response}
  * @exports Response
@@ -1266,24 +1296,24 @@ function changeState(object, state, data) {
     }
 }
 
-function call(listener, context, data) {
+function call(method, context, data) {
     var r;
 
     switch (data.length) {
         case 0:
-            r = listener.call(context);
+            r = method.call(context);
             break;
         case 1:
-            r = listener.call(context, data[0]);
+            r = method.call(context, data[0]);
             break;
         case 2:
-            r = listener.call(context, data[0], data[1]);
+            r = method.call(context, data[0], data[1]);
             break;
         case 3:
-            r = listener.call(context, data[0], data[1], data[2]);
+            r = method.call(context, data[0], data[1], data[2]);
             break;
         default:
-            r = listener.apply(context, data);
+            r = method.apply(context, data);
     }
 
     return r;
