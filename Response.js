@@ -970,8 +970,10 @@ Response.prototype.getResult = function (key) {
                 _key = keys[index];
 
                 if (_key != null) {
-                    result[_key] = stateData[index++];
+                    result[_key] = stateData[index];
                 }
+
+                index++;
             }
 
             return result;
