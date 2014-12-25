@@ -6,6 +6,7 @@
 var EventEmitter = require('EventEmitter');
 var toString = Object.prototype.toString;
 var nativeEmit = EventEmitter.prototype.emit;
+var undefined = void 0;
 
 /**
  *
@@ -931,7 +932,7 @@ Response.prototype.spread = function (callback, context) {
  */
 Response.prototype.getResult = function (key) {
     if (!this.isResolved()) {
-        return null;
+        return undefined;
     }
 
     var keys = arguments.length ? key : this.keys;
@@ -955,7 +956,7 @@ Response.prototype.getResult = function (key) {
                 }
             }
 
-            return null;
+            return undefined;
 
         case 'Number':
             return stateData[keys];
