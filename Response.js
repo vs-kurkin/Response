@@ -19,6 +19,7 @@ function State(state) {
     EventEmitter.call(this);
 
     this.state = arguments.length ? state : this.state;
+    this.data = this.data || {};
     this.stateData = new Array(0);
 
     return this;
@@ -58,6 +59,13 @@ State.prototype = create.call(EventEmitter, State);
 State.prototype.EVENT_CHANGE_STATE = 'changeState';
 
 /**
+ * Событие изменения состояния.
+ * @default 'changeState'
+ * @type {String}
+ */
+State.prototype.STATE_ERROR = 'error';
+
+/**
  * @type {Boolean}
  * @const
  * @default true
@@ -72,12 +80,35 @@ State.prototype.isState = true;
 State.prototype.state = null;
 
 /**
+ *
+ * @type {*}
+ * @default null
+ */
+State.prototype.data = null;
+
+/**
  * Данные для обработчиков стостояния.
  * @readonly
  * @type {Array}
  * @default []
  */
 State.prototype.stateData = null;
+
+/**
+ * @param {String} type Тип события.
+ * @param {...*} [args] Аргументы, передаваемые в обработчик события.
+ * @returns {Boolean}
+ */
+State.prototype.emit = function (type, args) {
+    var index = arguments.length;
+    var data = new Array(0);
+
+    while (index) {
+        data[--index] = arguments[index];
+    }
+
+    return emit(this, data);
+};
 
 /**
  * Сбрасывает объект в первоначальное состояние.
@@ -122,7 +153,7 @@ State.prototype.is = function (state) {
  * Затем событие {@link State#EVENT_CHANGE_STATE}.
  * Если новое состояние не передано или объект уже находится в указаном состоянии, события не будут вызваны.
  * @param {String|Number} state Новое сотояние объекта.
- * @param {Array|*} [data] Данные, которые будут переданы аргументом в обработчики нового состояния.
+ * @param {Array|*} [stateData] Данные, которые будут переданы аргументом в обработчики нового состояния.
  *                         Если был передан массив, аргументами для обработчиков будут его элементы.
  * @returns {State}
  * @example
@@ -140,9 +171,9 @@ State.prototype.is = function (state) {
  *   })
  *   .setState('foo', [true, false]);
  */
-State.prototype.setState = function (state, data) {
+State.prototype.setState = function (state, stateData) {
     var _state = !this.is(state);
-    var _data = arguments.length > 1 && toArray(data);
+    var _data = arguments.length > 1 && toArray(stateData);
 
     if (_data && (_state || _data.length)) {
         this.stateData = _data;
@@ -176,7 +207,7 @@ State.prototype.setState = function (state, data) {
  */
 State.prototype.onState = function (state, listener, context) {
     if (this.is(state)) {
-        invoke(this, listener, state, context);
+        invoke(this, listener, context);
     }
 
     return this.on(state, listener, context);
@@ -199,7 +230,7 @@ State.prototype.onState = function (state, listener, context) {
  */
 State.prototype.onceState = function (state, listener, context) {
     if (this.is(state)) {
-        invoke(this, listener, state, context);
+        invoke(this, listener, context);
     } else {
         this.once(state, listener, context);
     }
@@ -242,22 +273,42 @@ State.prototype.offChangeState = function (listener) {
 
 /**
  *
- * @param {Function} [wrapper]
+ * @param {String} key
+ * @param {*} [value]
+ * @returns {State}
+ */
+State.prototype.setData = function (key, value) {
+    this.data[key] = value;
+
+    return this;
+};
+
+/**
+ *
+ * @param {String} [key]
+ * @returns {*}
+ */
+State.prototype.getData = function (key) {
+    return arguments.length ? this.data[key] : this.data;
+};
+
+/**
+ *
+ * @param {Response} [parent]
  * @constructor
  * @requires EventEmitter
  * @extends {State}
  * @returns {Response}
  */
-function Response(wrapper) {
+function Response(parent) {
     this.State(this.STATE_PENDING);
 
-    this.data = null;
     this.context = null;
     this.callback = null;
     this.keys = null;
 
-    if (typeof wrapper === 'function') {
-        call(wrapper, this);
+    if (Response.isCompatible(parent)) {
+        this.listen(parent);
     }
 
     return this;
@@ -281,6 +332,10 @@ Response.Queue = Queue;
  */
 Response.isResponse = function (object) {
     return (object instanceof Response) || object && object.isResponse;
+};
+
+Response.isCompatible = function (object) {
+    return object != null && isFunction(object.then);
 };
 
 /**
@@ -344,7 +399,7 @@ Response.invoke = function (method, args) {
         data[index] = arguments[index];
     }
 
-    return call(response, response.invoke, data);
+    return call(response, response.invoke, null, data);
 };
 
 /**
@@ -417,13 +472,6 @@ Response.prototype.isResponse = true;
 
 /**
  *
- * @type {*}
- * @default null
- */
-Response.prototype.data = null;
-
-/**
- *
  * @type {Object}
  * @default null
  */
@@ -445,17 +493,6 @@ Response.prototype.keys = null;
 
 /**
  *
- * @param {*} [data=null]
- * @returns {Response}
- */
-Response.prototype.setData = function (data) {
-    this.data = arguments.length ? data : null;
-
-    return this;
-};
-
-/**
- *
  * @param {String|Number|Array|Arguments} [keys=null]
  * @returns {Response}
  */
@@ -472,7 +509,7 @@ Response.prototype.setKeys = function (keys) {
  * @returns {Function}
  */
 Response.prototype.bind = function (callback, context) {
-    if (typeof callback !== 'function') {
+    if (!isFunction(callback)) {
         throw new Error('Callback is not a function');
     }
 
@@ -481,63 +518,6 @@ Response.prototype.bind = function (callback, context) {
     return function responseCallback() {
         return callback.apply(_context, arguments);
     };
-};
-
-/**
- * @param {String} type Тип события.
- * @param {...*} [args] Аргументы, передаваемые в обработчик события.
- * @returns {Boolean}
- */
-Response.prototype.emit = function (type, args) {
-    var result = false;
-
-    if (this._events && this._events[type]) {
-        try {
-            result = nativeEmit.apply(this, arguments);
-        } catch (error) {
-            setReason(this, error);
-        }
-    }
-
-    return result;
-};
-
-/**
- * @param {String|Number} state
- * @param {Function|EventEmitter} listener
- * @param {Object} [context=this]
- * @returns {Response}
- */
-Response.prototype.onState = function (state, listener, context) {
-    if (this.is(state)) {
-        try {
-            invoke(this, listener, state, context);
-        } catch (error) {
-            setReason(this, error);
-        }
-    }
-
-    return this.on(state, listener, context);
-};
-
-/**
- * @param {String|Number} state
- * @param {Function|EventEmitter} listener
- * @param {Object} [context=this]
- * @returns {Response}
- */
-Response.prototype.onceState = function (state, listener, context) {
-    if (this.is(state)) {
-        try {
-            invoke(this, listener, state, context);
-        } catch (error) {
-            setReason(this, error);
-        }
-    } else {
-        this.once(state, listener, context);
-    }
-
-    return this;
 };
 
 /**
@@ -778,7 +758,7 @@ Response.prototype.callback = function defaultResponseCallback(error, results) {
                 arg[index] = arguments[index + 1];
             }
 
-            call(this.resolve, this, arg);
+            call(this, this.resolve, null, arg);
         } else {
             this.resolve();
         }
@@ -806,7 +786,7 @@ Response.prototype.callback = function defaultResponseCallback(error, results) {
  * @returns {Response}
  */
 Response.prototype.makeCallback = function (callback, context) {
-    this.callback = this.bind(typeof callback === 'function' ? callback : Response.prototype.callback, context);
+    this.callback = this.bind(isFunction(callback) ? callback : Response.prototype.callback, context);
 
     return this;
 };
@@ -873,7 +853,7 @@ Response.prototype.invoke = function (method, args) {
         _method = context[method];
     }
 
-    if (typeof _method === 'function') {
+    if (isFunction(_method)) {
         index = arguments.length - 1;
         arg = new Array(index);
 
@@ -885,14 +865,10 @@ Response.prototype.invoke = function (method, args) {
             this.pending();
         }
 
-        try {
-            return call(_method, context, arg);
-        } catch (error) {
-            return this.reject(error);
-        }
+        return call(this, _method, context, arg);
     }
 
-    throw new Error('Method is not a function.');
+    return this.reject(new Error('Method is not a function.'));
 };
 
 /**
@@ -901,7 +877,7 @@ Response.prototype.invoke = function (method, args) {
  * @param {Object} [context=this]
  */
 Response.prototype.spread = function (callback, context) {
-    call(callback, context == null ? this : context, this.stateData);
+    call(this, callback, context == null ? this : context, this.stateData);
 
     return this;
 };
@@ -1014,6 +990,8 @@ function Queue(stack, start) {
     this.stack = isArray(stack) ? stack : new Array(0);
     this.item = null;
     this.isStrict = this.isStrict;
+    this.isStarted = this.isStarted;
+    this.always(this.stop);
 
     if (getType(start) === 'Boolean' ? start.valueOf() : false) {
         this.start();
@@ -1041,13 +1019,13 @@ Queue.prototype.Response = Response;
  * @default 'start'
  * @type {String}
  */
-Queue.prototype.STATE_START = 'start';
+Queue.prototype.EVENT_START = 'start';
 
 /**
- * @default 'pending'
+ * @default 'stop'
  * @type {String}
  */
-Queue.prototype.STATE_STOP = Queue.prototype.STATE_PENDING;
+Queue.prototype.EVENT_STOP = 'stop';
 
 /**
  * @default 'nextItem'
@@ -1078,10 +1056,17 @@ Queue.prototype.stack = null;
 
 /**
  * @readonly
- * @default null
  * @type {*}
+ * @default null
  */
 Queue.prototype.item = null;
+
+/**
+ * @readonly
+ * @type {Boolean}
+ * @default false
+ */
+Queue.prototype.isStarted = false;
 
 /**
  *
@@ -1097,20 +1082,21 @@ Queue.prototype.start = function () {
 
     while (stack.length) {
         this.item = stack.shift();
-        this.setState(this.STATE_START);
 
-        if (!this.is(this.STATE_START)) {
-            return this;
+        if (!this.isStarted) {
+            this.isStarted = true;
+
+            this.emit(this.EVENT_START);
+
+            if (!this.isStarted) {
+                return this;
+            }
         }
 
-        if (typeof this.item === 'function') {
-            try {
-                this.item = this.item(item);
-            } catch (error) {
-                return setReason(this, error);
-            }
+        if (isFunction(this.item)) {
+            this.item = call(this, this.item, null, [item]);
 
-            if (!this.is(this.STATE_START)) {
+            if (!this.isStarted) {
                 return this;
             }
         }
@@ -1119,7 +1105,7 @@ Queue.prototype.start = function () {
 
         this.emit(this.EVENT_NEXT_ITEM, item);
 
-        if (!this.is(this.STATE_START)) {
+        if (!this.isStarted) {
             return this;
         }
 
@@ -1130,23 +1116,22 @@ Queue.prototype.start = function () {
                 continue;
             }
 
-            item.onReject(this.isStrict ? this.reject : this.start, this);
-
-            if (!this.is(this.STATE_START)) {
-                return this;
-            }
-
             if (item.isPending()) {
-                item.onResolve(this.start, this);
+                item
+                    .onResolve(this.start, this)
+                    .onReject(this.isStrict ? this.reject : this.start, this);
+
+                return this;
+            } else if (item.isRejected() && this.isStrict) {
+                this.reject();
+
                 return this;
             }
         }
     }
 
     if (stack.length === 0) {
-        this.item = null;
-
-        call(this.resolve, this, this.stateData);
+        call(this, this.resolve, null, this.stateData);
     }
 
     return this;
@@ -1157,8 +1142,13 @@ Queue.prototype.start = function () {
  * @returns {Queue}
  */
 Queue.prototype.stop = function () {
-    this.setState(this.STATE_STOP);
-    this.item = null;
+    this.isStarted = false;
+
+    this.emit(this.EVENT_STOP, this.item);
+
+    if (!this.isStarted) {
+        this.item = null;
+    }
 
     return this;
 };
@@ -1195,7 +1185,7 @@ Queue.prototype.strict = function (flag) {
  * @returns {Queue}
  */
 Queue.prototype.onStart = function (listener, context) {
-    this.onState(this.STATE_START, listener, context);
+    this.on(this.EVENT_START, listener, context);
     return this;
 };
 
@@ -1206,7 +1196,7 @@ Queue.prototype.onStart = function (listener, context) {
  * @returns {Queue}
  */
 Queue.prototype.onStop = function (listener, context) {
-    this.onState(this.STATE_STOP, listener, context);
+    this.on(this.EVENT_STOP, listener, context);
     return this;
 };
 
@@ -1221,6 +1211,10 @@ Queue.prototype.onNextItem = function (listener, context) {
     return this;
 };
 
+/**
+ *
+ * @returns {Queue}
+ */
 Queue.prototype.destroyItems = function () {
     var index = this.stateData.length;
 
@@ -1249,6 +1243,10 @@ function isArray(value) {
     return value && getType(value) === 'Array';
 }
 
+function isFunction(object) {
+    return typeof object === 'function';
+}
+
 function toArray(object) {
     return getType(object) === 'Array' ? object : wrap(object);
 }
@@ -1261,14 +1259,6 @@ function wrap(item) {
 
 function toError(value) {
     return value == null || getType(value) !== 'Error' ? new Error(value) : value;
-}
-
-function invoke(emitter, listener, state, context) {
-    if (typeof listener === 'function') {
-        call(listener, context == null ? emitter : context, emitter.stateData);
-    } else {
-        emit(listener, state, emitter.stateData);
-    }
 }
 
 function setReason(object, error) {
@@ -1290,7 +1280,7 @@ function changeState(object, state, data) {
 
     if (_events) {
         if (_events[state]) {
-            emit(object, state, data);
+            call(object, object.emit, null, wrap(state).concat(data));
         }
 
         if (_events[object.EVENT_CHANGE_STATE] && object.is(state)) {
@@ -1299,46 +1289,38 @@ function changeState(object, state, data) {
     }
 }
 
-function call(method, context, data) {
-    var r;
-
-    switch (data.length) {
-        case 0:
-            r = method.call(context);
-            break;
-        case 1:
-            r = method.call(context, data[0]);
-            break;
-        case 2:
-            r = method.call(context, data[0], data[1]);
-            break;
-        case 3:
-            r = method.call(context, data[0], data[1], data[2]);
-            break;
-        default:
-            r = method.apply(context, data);
+function invoke(emitter, listener, context) {
+    if (isFunction(listener)) {
+        call(emitter, listener, context, emitter.stateData);
+    } else {
+        emit(emitter, wrap(emitter.state).concat(emitter.stateData));
     }
-
-    return r;
 }
 
-function emit(emitter, type, data) {
-    switch (data.length) {
-        case 0:
-            emitter.emit(type);
-            break;
-        case 1:
-            emitter.emit(type, data[0]);
-            break;
-        case 2:
-            emitter.emit(type, data[0], data[1]);
-            break;
-        case 3:
-            emitter.emit(type, data[0], data[1], data[2]);
-            break;
-        default:
-            emitter.emit.apply(emitter, wrap(type).concat(data));
+function call(emitter, method, context, data) {
+    var ctx = context == null ? emitter : context;
+
+    try {
+        var r;
+
+        switch (data.length) {
+            case 0: r = method.call(ctx); break;
+            case 1: r = method.call(ctx, data[0]); break;
+            case 2: r = method.call(ctx, data[0], data[1]); break;
+            case 3: r = method.call(ctx, data[0], data[1], data[2]); break;
+            case 4: r = method.call(ctx, data[0], data[1], data[2], data[3]); break;
+            case 5: r = method.call(ctx, data[0], data[1], data[2], data[3], data[4]); break;
+            default: r = method.apply(ctx, data);
+        }
+
+        return r;
+    } catch (error) {
+        emitter.setState(emitter.STATE_ERROR, [error]);
     }
+}
+
+function emit(emitter, data) {
+    return call(emitter, nativeEmit, null, data);
 }
 
 function Constructor(constructor, parent, sp) {
