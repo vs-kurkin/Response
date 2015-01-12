@@ -1,19 +1,33 @@
-describe('State', function () {
+describe('State:', function () {
     var EE = require('EventEmitter');
     var Response = require('../Response');
     var State = Response.State;
     var state;
+    var Const;
+    var listener;
+    var ctx;
 
-    function getState() {
-        return new State();
+    function getConst(sp) {
+        function Const() {
+        }
+
+        State.create(Const, sp);
+
+        return Const;
     }
 
-    function checkStateProperties (state) {
+    function checkStateProperties(state) {
         expect(state.hasOwnProperty('state')).toBeTruthy();
         expect(state.hasOwnProperty('data')).toBeTruthy();
         expect(state.data).toEqual({});
         expect(state.stateData).toEqual([]);
     }
+
+    beforeEach(function () {
+        state = new State();
+        listener = jasmine.createSpy();
+        ctx = {};
+    });
 
     it('check exports', function () {
         expect(typeof State).toBe('function');
@@ -21,44 +35,60 @@ describe('State', function () {
 
     it('inherit', function () {
         expect(State.prototype instanceof EE);
-        expect((new State) instanceof EE);
-        expect((new State) instanceof State);
+        expect(state instanceof EE);
+        expect(state instanceof State);
     });
 
     describe('instance', function () {
         it('check properties', function () {
-            checkStateProperties(getState());
+            checkStateProperties(state);
         });
 
-        it('constructor may be called with any object', function () {
+        it('constructor may be called in another context object', function () {
             var obj = {};
-            var res = State.call(obj);
 
-            expect(obj).toBe(res);
+            expect(obj).toBe(State.call(obj));
 
             checkStateProperties(obj);
         });
 
         it('check constants', function () {
-            state = getState();
-
             expect(state.EVENT_CHANGE_STATE).toBe('changeState');
             expect(state.STATE_ERROR).toBe('error');
         });
 
+        it('check inherited constants', function () {
+            Const = getConst();
+            Const.prototype.EVENT_CHANGE_STATE = 'test1';
+            Const.prototype.STATE_ERROR = 'test2';
+
+            var lOne = jasmine.createSpy();
+            var lTwo = jasmine.createSpy();
+
+            new Const()
+                .on('test1', lOne)
+                .on('test1', function () {
+                    throw 'error';
+                })
+                .onState('test2', lTwo)
+                .setState(1);
+
+            expect(lOne).toHaveBeenCalled();
+            expect(lTwo).toHaveBeenCalled();
+        });
+
         it('set initial state', function () {
-            expect(getState().state).toBeNull();
+            expect(state.state).toBeNull();
             expect(new State(undefined).state).toBeUndefined();
             expect(new State(0).state).toBe(0);
             expect(new State(1).state).toBe(1);
             expect(new State('').state).toBe('');
             expect(new State('str').state).toBe('str');
-            expect(new State({a:1}).state).toEqual({a:1});
+            expect(new State({a: 1}).state).toEqual({a: 1});
         });
 
         it('set inherited state', function () {
-            function Const(){}
-            State.create(Const);
+            Const = getConst();
             Const.prototype.state = 1;
 
             expect(new Const().state).toBe(1);
@@ -75,7 +105,7 @@ describe('State', function () {
         });
 
         it('check instance', function () {
-            expect(State.isState(getState())).toBeTruthy();
+            expect(State.isState(state)).toBeTruthy();
         });
 
         it('check object', function () {
@@ -85,9 +115,7 @@ describe('State', function () {
         });
 
         it('check inherited object', function () {
-            function Const () {}
-            Const.prototype = getState();
-
+            Const = getConst();
             expect(State.isState(new Const())).toBeTruthy();
         });
     });
@@ -111,30 +139,30 @@ describe('State', function () {
         });
 
         it('check object as prototype', function () {
-            function Const () {}
-            var obj = State.create(Const);
+            function Const() {
+            }
 
-            expect(Const.prototype).toBe(obj);
-            expect(obj.hasOwnProperty('constructor')).toBeTruthy();
-            expect(obj.constructor).toBe(Const);
+            var proto = State.create(Const);
+
+            expect(Const.prototype).toBe(proto);
+            expect(proto.hasOwnProperty('constructor')).toBeTruthy();
+            expect(proto.constructor).toBe(Const);
         });
 
         it('check constructor with static methods', function () {
-            function Const () {}
+            Const = getConst(true);
 
-            State.create(Const, true);
-
-            expect(Const.create).toBe(State.create);
-            expect(Const.isState).toBe(State.isState);
+            for (var name in Const) {
+                if (Const.hasOwnProperty(name)) {
+                    expect(Const[name]).toBe(State[name]);
+                }
+            }
         });
     });
 
     it('throw error in listener should be set state "error"', function () {
-        state = getState();
-        var errorListener = jasmine.createSpy();
-
         state
-            .on('error', errorListener)
+            .on('error', listener)
             .on('event', function () {
                 throw 'err';
             });
@@ -142,11 +170,11 @@ describe('State', function () {
         state.emit('event');
 
         expect(state.state).toBe('error');
-        expect(errorListener).toHaveBeenCalledWith('err');
+        expect(listener).toHaveBeenCalledWith('err');
     });
 
     describe('set state', function () {
-        function checkState (object, state) {
+        function checkState(object, state) {
             object.setState(state);
             expect(object.state).toBe(state);
             expect(object.is(state)).toBeTruthy();
@@ -164,9 +192,6 @@ describe('State', function () {
 
         describe('subscribe', function () {
             it('event listener', function () {
-                state = getState();
-                var listener = jasmine.createSpy();
-
                 state
                     .on(1, listener)
                     .setState(1);
@@ -175,9 +200,6 @@ describe('State', function () {
             });
 
             it('before change state', function () {
-                state = getState();
-                var listener = jasmine.createSpy();
-
                 state
                     .onState(1, listener)
                     .setState(1);
@@ -186,9 +208,6 @@ describe('State', function () {
             });
 
             it('after change state', function () {
-                state = getState();
-                var listener = jasmine.createSpy();
-
                 state
                     .setState(1)
                     .onState(1, listener);
@@ -197,9 +216,6 @@ describe('State', function () {
             });
 
             it('once listener', function () {
-                state = getState();
-                var listener = jasmine.createSpy();
-
                 state
                     .onceState(1, listener)
                     .setState(1)
@@ -210,11 +226,9 @@ describe('State', function () {
             });
 
             it('check context listener', function () {
-                state = getState();
                 var lOne = jasmine.createSpy();
                 var lTwo = jasmine.createSpy();
                 var lThree = jasmine.createSpy();
-                var ctx = {};
 
                 state
                     .onState(1, lOne, ctx)
@@ -228,11 +242,9 @@ describe('State', function () {
             });
 
             it('check context once listener', function () {
-                state = getState();
                 var lOne = jasmine.createSpy();
                 var lTwo = jasmine.createSpy();
                 var lThree = jasmine.createSpy();
-                var ctx = {};
 
                 state
                     .onceState(1, lOne, ctx)
@@ -246,23 +258,18 @@ describe('State', function () {
             });
 
             it('other emitter', function () {
-                state = getState();
                 var emitter = new EE();
-                var listener = jasmine.createSpy();
 
                 state.onState(1, emitter);
                 emitter.on(1, listener);
 
-                state.setState(1, [1,2]);
+                state.setState(1, [1, 2]);
 
                 expect(listener).toHaveBeenCalledWith(1, 2);
             });
 
             describe('on change any state', function () {
                 it('subscription', function () {
-                    state = getState();
-                    var listener = jasmine.createSpy();
-                    var ctx = {};
 
                     state
                         .on(state.EVENT_CHANGE_STATE, listener)
@@ -275,9 +282,6 @@ describe('State', function () {
                 });
 
                 it('unsubscription', function () {
-                    state = getState();
-                    var listener = jasmine.createSpy();
-
                     state
                         .onChangeState(listener)
                         .setState(1)
@@ -288,7 +292,6 @@ describe('State', function () {
                 });
 
                 it('unsubscription of all listeners', function () {
-                    state = getState();
                     var lOne = jasmine.createSpy();
                     var lTwo = jasmine.createSpy();
 
@@ -305,9 +308,6 @@ describe('State', function () {
         });
 
         it('listeners should not be called if the status has not changed', function () {
-            state = getState();
-            var listener = jasmine.createSpy();
-
             state
                 .onState(1, listener)
                 .setState(1)
@@ -317,9 +317,6 @@ describe('State', function () {
         });
 
         it('second listener should not be called if the status well be changed', function () {
-            state = getState();
-            var listener = jasmine.createSpy();
-
             state
                 .onState(1, function () {
                     this.setState(2);
@@ -332,20 +329,46 @@ describe('State', function () {
     });
 
     describe('state data', function () {
-        it('change', function () {
-            state = getState();
-            var data = [1, {}, null];
+        var data = [1, {}, null];
 
+        it('one value', function () {
+            var fnc = function () {
+            };
+
+            state.setState(1, 1);
+            expect(state.stateData).toEqual([1]);
+
+            state.setState(1, 1, 2, 3);
+            expect(state.stateData).toEqual([1]);
+
+            state.setState(1, '1');
+            expect(state.stateData).toEqual(['1']);
+
+            state.setState(1, {});
+            expect(state.stateData).toEqual([{}]);
+
+            state.setState(1, []);
+            expect(state.stateData).toEqual([]);
+
+            state.setState(1, fnc);
+            expect(state.stateData).toEqual([fnc]);
+
+            state.setState(1, null);
+            expect(state.stateData).toEqual([null]);
+
+            state.setState(1, undefined);
+            expect(state.stateData).toEqual([undefined]);
+
+            state.setState(1);
+            expect(state.stateData).toEqual([undefined]);
+        });
+
+        it('several values', function () {
             state.setState(1, data);
-
             expect(state.stateData).toBe(data);
         });
 
         it('change in listener', function () {
-            state = getState();
-            var listener = jasmine.createSpy();
-            var data = [1, {}, null];
-
             state
                 .onState(1, function () {
                     this.setState(1, data);
@@ -358,10 +381,6 @@ describe('State', function () {
         });
 
         it('change in listener after change state', function () {
-            state = getState();
-            var listener = jasmine.createSpy();
-            var data = [1, {}, null];
-
             state
                 .setState(1)
                 .onState(1, function () {
@@ -374,10 +393,6 @@ describe('State', function () {
         });
 
         it('should not be changed if they were not passed', function () {
-            state = getState();
-            var listener = jasmine.createSpy();
-            var data = [1, {}, null];
-
             state
                 .setState(1, data)
                 .onState(1, function () {
@@ -387,48 +402,53 @@ describe('State', function () {
 
             expect(state.stateData).toBe(data);
         });
+
+        it('should change with changing state', function () {
+            state
+                .onState(1, listener)
+                .onState(2, listener);
+
+            state.setState(1, [1]);
+            expect(state.stateData).toEqual([1]);
+            expect(listener).toHaveBeenCalledWith(1);
+
+            state.setState(2);
+            expect(state.stateData).toEqual([]);
+            expect(listener).toHaveBeenCalledWith();
+        });
     });
 
     describe('data', function () {
-        it('witch prototype', function () {
-            function Const() {}
+        var data3 = {a: 1};
 
-            var data = {
-                a: 1
-            };
-
-            State.create(Const);
-            Const.prototype.data = data;
-
-            expect(new Const().data).toBe(data);
-        });
-
-        it('set by key', function () {
-            state = getState();
-            state
-                .setData('key1', 'val1')
-                .setData('key2', 2)
-                .setData('key3', {a:1})
-                .setData('key4');
-
-            expect(state.data).toEqual({
-                key1: 'val1',
-                key2: 2,
-                key3: {a:1},
-                key4: undefined
-            });
-        });
-
-        it('get by key', function () {
-            var data3 = {a:1};
-
-            state = getState();
+        beforeEach(function () {
             state
                 .setData('key1', 'val1')
                 .setData('key2', 2)
                 .setData('key3', data3)
                 .setData('key4');
+        });
 
+        it('with prototype', function () {
+            Const = getConst();
+
+            var data = Const.prototype.data = {
+                a: 1
+            };
+
+            expect(new Const().data).toBe(data);
+        });
+
+        it('set by key', function () {
+            expect(state.data).toEqual({
+                key1: 'val1',
+                key2: 2,
+                key3: {a: 1},
+                key4: undefined
+            });
+        });
+
+        it('get by key', function () {
             expect(state.getData('key1')).toBe('val1');
             expect(state.getData('key2')).toBe(2);
             expect(state.getData('key3')).toBe(data3);
@@ -437,21 +457,37 @@ describe('State', function () {
         });
 
         it('get all', function () {
-            state = getState();
-            state
-                .setData('key1', 'val1')
-                .setData('key2', 2)
-                .setData('key3', {a:1})
-                .setData('key4');
-
             expect(state.getData()).toBe(state.data);
         });
     });
 
+    describe('spread', function () {
+        var data = [1, {}, null];
+
+        afterEach(function () {
+            expect(listener).toHaveBeenCalledWith(1, {}, null);
+            expect(listener.calls.mostRecent().object).toBe(ctx);
+        });
+
+        it('(with default context)', function () {
+            ctx = state;
+
+            state
+                .setState(1, data)
+                .spread(listener);
+        });
+
+        it('(with custom context)', function () {
+            state
+                .setState(1, data)
+                .spread(listener, ctx);
+        });
+    });
+
     it('destroy', function () {
-        state = getState();
         state
-            .on(1, function(){})
+            .on(1, function () {
+            })
             .setState(1, 2, 3, 4)
             .setData('key', 1);
 
