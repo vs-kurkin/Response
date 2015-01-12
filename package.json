@@ -29,6 +29,6 @@
         "url": "https://github.com/B-Vladi/Response/issues"
     },
     "scripts": {
-        "test": "./node_modules/karma/bin/karma start; jasmine"
+        "test": "echo '>> Starting PhantomJS tests ======' && ./node_modules/karma/bin/karma start; echo '>> Starting node tests ======' && jasmine"
     }
 }
