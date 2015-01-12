@@ -181,7 +181,7 @@ describe('State:', function () {
         }
 
         it('check settled state', function () {
-            var state = new State(0);
+            state = new State(0);
 
             checkState(state, 1);
             checkState(state, '');
@@ -269,16 +269,34 @@ describe('State:', function () {
             });
 
             describe('on change any state', function () {
-                it('subscription', function () {
-
+                it('subscription on event', function () {
                     state
                         .on(state.EVENT_CHANGE_STATE, listener)
+                        .setState(1);
+
+                    expect(listener).toHaveBeenCalledWith(1);
+
+                    state.setState(2);
+
+                    expect(listener).toHaveBeenCalledWith(2);
+                    expect(listener.calls.count()).toBe(2);
+                });
+
+                it('subscription (shorthand)', function () {
+                    state
+                        .onChangeState(listener)
+                        .setState(1);
+
+                    expect(listener).toHaveBeenCalledWith(1);
+                    expect(listener.calls.mostRecent().object).toBe(state);
+                });
+
+                it('subscription (shorthand, custom context)', function () {
+                    state
                         .onChangeState(listener, ctx)
-                        .setState(1)
-                        .setState(2);
+                        .setState(1);
 
                     expect(listener.calls.mostRecent().object).toBe(ctx);
-                    expect(listener.calls.count()).toBe(4);
                 });
 
                 it('unsubscription', function () {

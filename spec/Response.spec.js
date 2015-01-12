@@ -217,6 +217,7 @@ describe('Response:', function () {
         });
 
         afterEach(function () {
+            expect(listener).toHaveBeenCalled();
             expect(listener.calls.mostRecent().object).toBe(ctx);
         });
 
@@ -227,7 +228,6 @@ describe('Response:', function () {
                     .setState(1)
                     .pending();
 
-                expect(listener).toHaveBeenCalled();
             });
 
             it('should be change state to "pending"', function () {
@@ -237,7 +237,6 @@ describe('Response:', function () {
                     .pending();
 
                 expect(resp.state).toBe('pending');
-                expect(listener).toHaveBeenCalled();
             });
 
             it('(shorthand)', function () {
@@ -247,7 +246,6 @@ describe('Response:', function () {
                     .pending();
 
                 expect(resp.state).toBe('pending');
-                expect(listener).toHaveBeenCalled();
             });
 
             it('should call the handler once', function () {
@@ -261,45 +259,39 @@ describe('Response:', function () {
         });
 
         describe('resolve', function () {
+            afterEach(function () {
+                expect(resp.state).toBe('resolve');
+                expect(listener).toHaveBeenCalledWith(1, null, arg);
+            });
+
             it('from static method', function () {
                 resp = Response
                     .resolve(1, null, arg)
                     .onResolve(listener, ctx);
-
-                expect(resp.state).toBe('resolve');
-                expect(listener).toHaveBeenCalledWith(1, null, arg);
             });
 
             it('should be emits event "resolve"', function () {
                 resp
                     .on('resolve', listener, ctx)
                     .resolve(1, null, arg);
-
-                expect(listener).toHaveBeenCalledWith(1, null, arg);
             });
 
             it('should be change state to "resolve"', function () {
                 resp
                     .onState('resolve', listener, ctx)
                     .resolve(1, null, arg);
-
-                expect(resp.state).toBe('resolve');
-                expect(listener).toHaveBeenCalledWith(1, null, arg);
             });
 
             it('(shorthand)', function () {
                 resp
                     .onResolve(listener, ctx)
                     .resolve(1, null, arg);
-
-                expect(resp.state).toBe('resolve');
-                expect(listener).toHaveBeenCalledWith(1, null, arg);
             });
 
             it('should call the handler once', function () {
                 resp
                     .onResolve(listener, ctx)
-                    .resolve()
+                    .resolve(1, null, arg)
                     .pending()
                     .resolve();
 
@@ -308,39 +300,33 @@ describe('Response:', function () {
         });
 
         describe('reject', function () {
+            afterEach(function () {
+                expect(resp.state).toBe('error');
+                expect(listener).toHaveBeenCalledWith(new Error('error'));
+            });
+
             it('from static method', function () {
                 resp = Response
                     .reject('error')
                     .onReject(listener, ctx);
-
-                expect(resp.state).toBe('error');
-                expect(listener).toHaveBeenCalledWith(new Error('error'));
             });
 
             it('should be emits event "error"', function () {
                 resp
                     .on('error', listener, ctx)
                     .reject('error');
-
-                expect(listener).toHaveBeenCalledWith(new Error('error'));
             });
 
             it('should be change state to "error"', function () {
                 resp
                     .onState('error', listener, ctx)
                     .reject('error');
-
-                expect(resp.state).toBe('error');
-                expect(listener).toHaveBeenCalledWith(new Error('error'));
             });
 
             it('(shorthand)', function () {
                 resp
                     .onReject(listener, ctx)
                     .reject('error');
-
-                expect(resp.state).toBe('error');
-                expect(listener).toHaveBeenCalledWith(new Error('error'));
             });
 
             it('should call the handler once', function () {
@@ -381,6 +367,18 @@ describe('Response:', function () {
                     .progress(1)
                     .resolve()
                     .reject('error');
+
+                expect(listener.calls.count()).toBe(3);
+            });
+
+            it('on then (all, default context)', function () {
+                resp
+                    .then(listener, listener, listener)
+                    .progress(1)
+                    .resolve()
+                    .reject('error');
+
+                ctx = resp;
 
                 expect(listener.calls.count()).toBe(3);
             });
