@@ -19,7 +19,9 @@
         "jasmine-node": "^1.14.5",
         "karma": "^0.12.24",
         "karma-jasmine": "^0.2.3",
+        "karma-browserify": "^2.0.0",
         "karma-chrome-launcher": "^0.1.5",
+        "karma-phantomjs-launcher": "^0.1.4",
         "supertest": "^0.15.0"
     },
     "bugs": {
@@ -27,6 +29,6 @@
         "url": "https://github.com/B-Vladi/Response/issues"
     },
     "scripts": {
-        "test": "jasmine"
+        "test": "echo '>> Starting PhantomJS tests ======' && ./node_modules/karma/bin/karma start; echo '>> Starting node tests ======' && jasmine"
     }
 }
