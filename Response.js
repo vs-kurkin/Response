@@ -159,9 +159,10 @@ State.prototype.is = function (state) {
  */
 State.prototype.setState = function (state, stateData) {
     var _state = !this.is(state);
-    var _data = arguments.length > 1 && toArray(stateData);
+    var _hasData = arguments.length > 1;
+    var _data = _hasData ? toArray(stateData) : new Array(0);
 
-    if (_data && (_state || _data.length)) {
+    if (_state || _hasData || _data.length) {
         this.stateData = _data;
 
         if (this._event) {
@@ -276,6 +277,17 @@ State.prototype.setData = function (key, value) {
  */
 State.prototype.getData = function (key) {
     return arguments.length ? this.data[key] : this.data;
+};
+
+/**
+ *
+ * @param {Function} callback
+ * @param {Object} [context=this]
+ */
+State.prototype.spread = function (callback, context) {
+    call(this, callback, context == null ? this : context, this.stateData);
+
+    return this;
 };
 
 /**
@@ -630,6 +642,18 @@ Response.prototype.always = function (listener, context) {
  * @param {Object} [context=this]
  * @returns {Response}
  */
+Response.prototype.onPending = function (listener, context) {
+    this.onceState(this.STATE_PENDING, listener, context);
+
+    return this;
+};
+
+/**
+ *
+ * @param {Function|EventEmitter} listener
+ * @param {Object} [context=this]
+ * @returns {Response}
+ */
 Response.prototype.onResolve = function (listener, context) {
     this.onceState(this.STATE_RESOLVED, listener, context);
 
@@ -860,17 +884,6 @@ Response.prototype.invoke = function (method, args) {
     }
 
     return this.reject(new Error('Method is not a function.'));
-};
-
-/**
- *
- * @param {Function} callback
- * @param {Object} [context=this]
- */
-Response.prototype.spread = function (callback, context) {
-    call(this, callback, context == null ? this : context, this.stateData);
-
-    return this;
 };
 
 /**
@@ -1114,7 +1127,7 @@ Queue.prototype.start = function () {
 
                 return this;
             } else if (item.isRejected() && this.isStrict) {
-                this.reject();
+                this.setState(this.STATE_REJECTED, item.stateData);
 
                 return this;
             }
@@ -1122,7 +1135,7 @@ Queue.prototype.start = function () {
     }
 
     if (stack.length === 0) {
-        call(this, this.resolve, null, this.stateData);
+        this.setState(this.STATE_RESOLVED, this.stateData);
     }
 
     return this;
