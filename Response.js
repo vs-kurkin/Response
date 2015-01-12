@@ -10,7 +10,7 @@ var undefined = void 0;
 
 /**
  *
- * @param {String|Number} [state] Начальное состояние объекта.
+ * @param {*} [state] Начальное состояние объекта.
  * @returns {State}
  * @constructor
  * @extends EventEmitter
@@ -111,20 +111,6 @@ State.prototype.emit = function (type, args) {
 };
 
 /**
- * Сбрасывает объект в первоначальное состояние.
- * Так же удаляются все обработчики событий.
- * @function
- * @returns {State}
- * @example
- * new State('foo')
- *  .reset()
- *  .state; // null
- */
-State.prototype.reset = function () {
-    return this.constructor();
-};
-
-/**
  * Обнуляет все собственные свойства объекта.
  * @returns {State}
  */
@@ -140,7 +126,7 @@ State.prototype.destroy = function () {
 
 /**
  * Сравнивает текущее состояние объекта со значение state.
- * @param {String|Number} state Состояние, с которым необходимо ставнить текущее.
+ * @param {*} state Состояние, с которым необходимо ставнить текущее.
  * @returns {Boolean} Результат сравнения.
  */
 State.prototype.is = function (state) {
@@ -152,7 +138,7 @@ State.prototype.is = function (state) {
  * После изменения состояния, первым будет вызвано событие с именем, соответствуюшим новому значению состояния.
  * Затем событие {@link State#EVENT_CHANGE_STATE}.
  * Если новое состояние не передано или объект уже находится в указаном состоянии, события не будут вызваны.
- * @param {String|Number} state Новое сотояние объекта.
+ * @param {*} state Новое сотояние объекта.
  * @param {Array|*} [stateData] Данные, которые будут переданы аргументом в обработчики нового состояния.
  *                         Если был передан массив, аргументами для обработчиков будут его элементы.
  * @returns {State}
@@ -193,7 +179,7 @@ State.prototype.setState = function (state, stateData) {
 /**
  * Регистрирует обработчик состояния.
  * Если объект уже находится в указанном состоянии, обработчик будет вызван немедленно.
- * @param {String|Number} state Отслеживаемое состояние.
+ * @param {*} state Отслеживаемое состояние.
  * @param {Function|EventEmitter} listener Обработчик состояния.
  * @param {Object} [context=this] Контекст обработчика состояния.
  * @returns {State}
@@ -215,7 +201,7 @@ State.prototype.onState = function (state, listener, context) {
 
 /**
  * Регистрирует одноразовый обработчик состояния.
- * @param {String|Number} state Отслеживаемое состояние.
+ * @param {*} state Отслеживаемое состояние.
  * @param {Function|EventEmitter} [listener] Обрабо1тчик состояния.
  * @param {Object} [context=this] Контекст обработчика состояния.
  * @returns {State}
@@ -334,6 +320,11 @@ Response.isResponse = function (object) {
     return (object instanceof Response) || object && object.isResponse;
 };
 
+/**
+ *
+ * @param {*} object
+ * @returns {Boolean}
+ */
 Response.isCompatible = function (object) {
     return object != null && isFunction(object.then);
 };
@@ -1279,7 +1270,7 @@ function changeState(object, state, data) {
     object.state = state;
 
     if (_events) {
-        if (_events[state]) {
+        if (state === 'error' || _events[state]) {
             call(object, object.emit, null, wrap(state).concat(data));
         }
 
@@ -1327,6 +1318,12 @@ function Constructor(constructor, parent, sp) {
     var prototype = parent.prototype;
     var name;
 
+    for (name in prototype) {
+        if (prototype.hasOwnProperty(name) && name !== 'constructor') {
+            this[name] = prototype[name];
+        }
+    }
+
     if (constructor) {
         this.constructor = constructor;
 
@@ -1338,12 +1335,6 @@ function Constructor(constructor, parent, sp) {
                     constructor[name] = parent[name];
                 }
             }
-        }
-    }
-
-    for (name in prototype) {
-        if (prototype.hasOwnProperty(name)) {
-            this[name] = prototype[name];
         }
     }
 
