@@ -29,6 +29,7 @@ function State(state) {
  * Проверяет, я вляется ли объект экземпляром конструктора {@link State}.
  * @param {Object} [object] Проверяемый объект.
  * @returns {Boolean}
+ * @static
  */
 State.isState = function (object) {
     return (object instanceof State) || object && object.isState;
@@ -283,11 +284,28 @@ State.prototype.getData = function (key) {
  *
  * @param {Function} callback
  * @param {Object} [context=this]
+ * @returns {*}
  */
 State.prototype.spread = function (callback, context) {
-    call(this, callback, context == null ? this : context, this.stateData);
+    return call(this, callback, context == null ? this : context, this.stateData);
+};
 
-    return this;
+/**
+ *
+ * @param {Function} callback
+ * @param {Object} [context=this]
+ * @returns {Function}
+ */
+State.prototype.bind = function (callback, context) {
+    if (!isFunction(callback)) {
+        throw new Error('Callback is not a function');
+    }
+
+    var _context = context == null ? this : context;
+
+    return function stateCallback() {
+        return callback.apply(_context, arguments);
+    };
 };
 
 /**
@@ -302,8 +320,8 @@ function Response(parent) {
     this.State(this.STATE_PENDING);
 
     this.context = null;
-    this.callback = null;
     this.keys = null;
+    this.callback = this.callback;
 
     if (Response.isCompatible(parent)) {
         this.listen(parent);
@@ -335,6 +353,7 @@ Response.isResponse = function (object) {
 /**
  *
  * @param {*} object
+ * @static
  * @returns {Boolean}
  */
 Response.isCompatible = function (object) {
@@ -350,6 +369,7 @@ Response.isCompatible = function (object) {
  * module.exports instanceof Response; // true
  * module.exports.hasOwnProperty('resolve'); // false
  *
+ * @static
  * @returns {Object}
  */
 Response.create = create;
@@ -363,8 +383,8 @@ Response.resolve = function (results) {
     var response = new Response();
     var index = arguments.length;
 
-    while (index--) {
-        response.stateData[index] = arguments[index];
+    while (index) {
+        response.stateData[--index] = arguments[index];
     }
 
     response.state = response.STATE_RESOLVED;
@@ -391,15 +411,16 @@ Response.reject = function (reason) {
  *
  * @param {Function|String} method
  * @param {...*} [args]
+ * @static
  * @returns {Response}
  */
 Response.invoke = function (method, args) {
-    var response = new Response().makeCallback();
+    var response = new this();
     var index = arguments.length;
     var data = new Array(index);
 
-    while (index--) {
-        data[index] = arguments[index];
+    while (index) {
+        data[--index] = arguments[index];
     }
 
     return call(response, response.invoke, null, data);
@@ -414,8 +435,8 @@ Response.queue = function (args) {
     var index = arguments.length;
     var stack = new Array(index);
 
-    while (index--) {
-        stack[index] = arguments[index];
+    while (index) {
+        stack[--index] = arguments[index];
     }
 
     return new Queue(stack);
@@ -431,8 +452,8 @@ Response.strictQueue = function (args) {
     var index = arguments.length;
     var stack = new Array(index);
 
-    while (index--) {
-        stack[index] = arguments[index];
+    while (index) {
+        stack[--index] = arguments[index];
     }
 
     return new Queue(stack).strict();
@@ -482,13 +503,6 @@ Response.prototype.context = null;
 
 /**
  *
- * @type {Function|null}
- * @default null
- */
-Response.prototype.callback = null;
-
-/**
- *
  * @type {Array}
  * @default null
  */
@@ -507,24 +521,6 @@ Response.prototype.setKeys = function (keys) {
 
 /**
  *
- * @param {Function} callback
- * @param {Object} [context=this]
- * @returns {Function}
- */
-Response.prototype.bind = function (callback, context) {
-    if (!isFunction(callback)) {
-        throw new Error('Callback is not a function');
-    }
-
-    var _context = context == null ? this : context;
-
-    return function responseCallback() {
-        return callback.apply(_context, arguments);
-    };
-};
-
-/**
- *
  * @returns {Response}
  */
 Response.prototype.pending = function () {
@@ -539,13 +535,16 @@ Response.prototype.pending = function () {
  */
 Response.prototype.resolve = function (results) {
     var index = arguments.length;
-    var data = new Array(index);
 
-    while (index--) {
-        data[index] = arguments[index];
+    if (index || !this.isResolved()) {
+        var data = new Array(index);
+
+        while (index--) {
+            data[index] = arguments[index];
+        }
+
+        this.setState(this.STATE_RESOLVED, data);
     }
-
-    this.setState(this.STATE_RESOLVED, data);
 
     return this;
 };
@@ -556,7 +555,9 @@ Response.prototype.resolve = function (results) {
  * @returns {Response}
  */
 Response.prototype.reject = function (reason) {
-    this.setState(this.STATE_REJECTED, new Array(reason == null ? 0 : toError(reason)));
+    if (arguments.length || !this.isRejected()) {
+        this.setState(this.STATE_REJECTED, new Array(toError(reason)));
+    }
 
     return this;
 };
@@ -749,7 +750,7 @@ Response.prototype.done = function () {
  * @returns {Response}
  */
 Response.prototype.setContext = function (context) {
-    if (typeof context === 'object') {
+    if (arguments.length) {
         this.context = context;
     }
 
@@ -796,29 +797,14 @@ Response.prototype.callback = function defaultResponseCallback(error, results) {
  *
  * $.getJSON('ajax/test.json', r.callback);
  *
- * @param {Function} [callback=Response.callback]
+ * @param {Function} [callback=this.callback]
  * @param {Object} [context=this]
  * @returns {Response}
  */
 Response.prototype.makeCallback = function (callback, context) {
-    this.callback = this.bind(isFunction(callback) ? callback : Response.prototype.callback, context);
+    this.callback = this.bind(isFunction(callback) ? callback : this.callback, context);
 
     return this;
-};
-
-/**
- * @example
- * var r = new Response();
- * fs.open('/file.txt', 'r', r.getCallback());
- *
- * @returns {Function}
- */
-Response.prototype.getCallback = function () {
-    if (typeof this.callback !== 'function') {
-        this.makeCallback();
-    }
-
-    return this.callback;
 };
 
 /**
@@ -855,14 +841,14 @@ Response.prototype.getCallback = function () {
  * @returns {*} Результат работы метода method
  */
 Response.prototype.invoke = function (method, args) {
-    var context = this.context == null ? this : this.context;
+    var context = this.context;
     var arg;
     var index;
     var _method = method;
 
     if (typeof _method === 'string' || getType(_method) === 'String') {
         if (context == null) {
-            throw new Error('Context object is not defined. Use the Response#setContext method.');
+            return this.reject(new Error('Context object is not defined. Use the Response#setContext method.'));
         }
 
         _method = context[method];
@@ -995,7 +981,9 @@ function Queue(stack, start) {
     this.item = null;
     this.isStrict = this.isStrict;
     this.isStarted = this.isStarted;
-    this.always(this.stop);
+    this
+        .onState(this.STATE_RESOLVED, this.stop)
+        .onState(this.STATE_REJECTED, this.stop);
 
     if (getType(start) === 'Boolean' ? start.valueOf() : false) {
         this.start();
@@ -1042,7 +1030,7 @@ Queue.prototype.EVENT_NEXT_ITEM = 'nextItem';
  * @const
  * @default true
  */
-State.prototype.isQueue = true;
+Queue.prototype.isQueue = true;
 
 /**
  * @readonly
@@ -1050,6 +1038,13 @@ State.prototype.isQueue = true;
  * @type {Boolean}
  */
 Queue.prototype.isStrict = false;
+
+/**
+ * @readonly
+ * @type {Boolean}
+ * @default false
+ */
+Queue.prototype.isStarted = false;
 
 /**
  * @readonly
@@ -1066,76 +1061,15 @@ Queue.prototype.stack = null;
 Queue.prototype.item = null;
 
 /**
- * @readonly
- * @type {Boolean}
- * @default false
- */
-Queue.prototype.isStarted = false;
-
-/**
  *
  * @returns {Queue}
  */
 Queue.prototype.start = function () {
-    if (!this.isPending()) {
-        return this;
-    }
+    if (!this.isStarted && this.isPending()) {
+        this.isStarted = true;
+        this.emit(this.EVENT_START);
 
-    var stack = this.stack;
-    var item = this.item;
-
-    while (stack.length) {
-        this.item = stack.shift();
-
-        if (!this.isStarted) {
-            this.isStarted = true;
-
-            this.emit(this.EVENT_START);
-
-            if (!this.isStarted) {
-                return this;
-            }
-        }
-
-        if (isFunction(this.item)) {
-            this.item = call(this, this.item, null, [item]);
-
-            if (!this.isStarted) {
-                return this;
-            }
-        }
-
-        item = this.item;
-
-        this.emit(this.EVENT_NEXT_ITEM, item);
-
-        if (!this.isStarted) {
-            return this;
-        }
-
-        this.stateData.push(item);
-
-        if (item && Response.isResponse(item)) {
-            if (item === this) {
-                continue;
-            }
-
-            if (item.isPending()) {
-                item
-                    .onResolve(this.start, this)
-                    .onReject(this.isStrict ? this.reject : this.start, this);
-
-                return this;
-            } else if (item.isRejected() && this.isStrict) {
-                this.setState(this.STATE_REJECTED, item.stateData);
-
-                return this;
-            }
-        }
-    }
-
-    if (stack.length === 0) {
-        this.setState(this.STATE_RESOLVED, this.stateData);
+        queueIterator(this);
     }
 
     return this;
@@ -1146,12 +1080,15 @@ Queue.prototype.start = function () {
  * @returns {Queue}
  */
 Queue.prototype.stop = function () {
-    this.isStarted = false;
+    if (this.isStarted === true) {
+        this.isStarted = false;
 
-    this.emit(this.EVENT_STOP, this.item);
+        if (!this.isPending()) {
+            this.stack.length = 0;
+            this.item = null;
+        }
 
-    if (!this.isStarted) {
-        this.item = null;
+        this.emit(this.EVENT_STOP, this.item);
     }
 
     return this;
@@ -1162,11 +1099,12 @@ Queue.prototype.stop = function () {
  * @returns {Queue}
  */
 Queue.prototype.push = function (args) {
-    var index = arguments.length;
+    var length = arguments.length;
+    var index = 0;
     var stackIndex = this.stack.length;
 
-    while (index--) {
-        this.stack[stackIndex++] = arguments[index];
+    while (index < length) {
+        this.stack[stackIndex++] = arguments[index++];
     }
 
     return this;
@@ -1239,6 +1177,65 @@ Queue.prototype.destroyItems = function () {
  */
 module.exports = Response;
 
+function queueIterator (queue) {
+    if (!queue.isStarted) {
+        return;
+    }
+
+    while (queue.stack.length) {
+        if(checkFunction(queue) || changeItem(queue) || checkResponse(queue)) {
+            return;
+        }
+    }
+
+    queue.setState(queue.STATE_RESOLVED, queue.stateData);
+}
+
+function checkFunction (queue) {
+    var item = queue.stack.shift();
+
+    if (isFunction(item)) {
+        item = call(queue.isStrict ? queue : null, item, queue, wrap(queue.item));
+    }
+
+    if (queue.isPending()) {
+        queue.stateData.push(item);
+        queue.item = item;
+    }
+
+    return !queue.isStarted;
+}
+
+function changeItem (queue) {
+    var item = queue.item;
+
+    queue.emit(queue.EVENT_NEXT_ITEM, item);
+
+    return !queue.isStarted;
+}
+
+function checkResponse (queue) {
+    var item = queue.item;
+
+    if (item && Response.isResponse(item) && item !== queue) {
+        if (item.is(item.STATE_REJECTED) && queue.isStrict) {
+            queue.setState(queue.STATE_REJECTED, item.stateData);
+
+            return true;
+        } else if (!item.is(item.STATE_RESOLVED)) {
+            item
+                .onceState(item.STATE_RESOLVED, onEndStackItem, queue)
+                .onceState(item.STATE_REJECTED, queue.isStrict ? queue.reject : onEndStackItem, queue);
+
+            return true;
+        }
+    }
+}
+
+function onEndStackItem() {
+    queueIterator(this);
+}
+
 function getType(object) {
     return toString.call(object).slice(8, -1);
 }
@@ -1262,17 +1259,7 @@ function wrap(item) {
 }
 
 function toError(value) {
-    return value == null || getType(value) !== 'Error' ? new Error(value) : value;
-}
-
-function setReason(object, error) {
-    if (object.isRejected()) {
-        object.stateData[0] = toError(error);
-    } else {
-        object.reject(error);
-    }
-
-    return object;
+    return value == null || (value instanceof Error) || getType(value) !== 'Error' ? new Error(value) : value;
 }
 
 function changeState(object, state, data) {
@@ -1283,7 +1270,7 @@ function changeState(object, state, data) {
     object.state = state;
 
     if (_events) {
-        if (state === 'error' || _events[state]) {
+        if (_events[state]) {
             call(object, object.emit, null, wrap(state).concat(data));
         }
 
@@ -1319,7 +1306,11 @@ function call(emitter, method, context, data) {
 
         return r;
     } catch (error) {
-        emitter.setState(emitter.STATE_ERROR, [error]);
+        error = toError(error);
+
+        emitter && emitter.setState(emitter.STATE_ERROR, [error]);
+
+        return error;
     }
 }
 
