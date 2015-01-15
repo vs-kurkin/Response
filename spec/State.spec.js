@@ -7,23 +7,32 @@ describe('State:', function () {
     var listener;
     var ctx;
 
-    function getConst(sp) {
-        function Const() {
-        }
-
-        State.create(Const, sp);
-
-        return Const;
-    }
-
-    function checkStateProperties(state) {
-        expect(state.hasOwnProperty('state')).toBeTruthy();
-        expect(state.hasOwnProperty('data')).toBeTruthy();
+    function checkProperties() {
+        expect(state.state).toBeNull();
         expect(state.data).toEqual({});
         expect(state.stateData).toEqual([]);
+        expect(state.isState).toBeTruthy();
+
+        expect(state.EVENT_CHANGE_STATE).toBe('changeState');
+        expect(state.STATE_ERROR).toBe('error');
+    }
+
+    function checkInherit () {
+        expect(state instanceof Const).toBeTruthy();
+    }
+
+    function checkPrototype() {
+        expect(Const.prototype instanceof EE).toBeTruthy();
+        expect(Const.prototype.hasOwnProperty('constructor')).toBeTruthy();
+        expect(Const.prototype.constructor).toBe(Const);
+    }
+
+    function checkType () {
+        expect(State.isState(state)).toBeTruthy();
     }
 
     beforeEach(function () {
+        Const = State;
         state = new State();
         listener = jasmine.createSpy();
         ctx = {};
@@ -33,52 +42,24 @@ describe('State:', function () {
         expect(typeof State).toBe('function');
     });
 
-    it('inherit', function () {
-        expect(State.prototype instanceof EE);
-        expect(state instanceof EE);
-        expect(state instanceof State);
-    });
+    describe('check constructor:', function () {
+        it('prototype', checkPrototype);
 
-    describe('instance', function () {
-        it('check properties', function () {
-            checkStateProperties(state);
-        });
-
-        it('constructor may be called in another context object', function () {
+        it('may be called in another context object', function () {
             var obj = {};
 
             expect(obj).toBe(State.call(obj));
 
-            checkStateProperties(obj);
+            checkProperties(obj);
         });
+    });
 
-        it('check constants', function () {
-            expect(state.EVENT_CHANGE_STATE).toBe('changeState');
-            expect(state.STATE_ERROR).toBe('error');
-        });
-
-        it('check inherited constants', function () {
-            Const = getConst();
-            Const.prototype.EVENT_CHANGE_STATE = 'test1';
-            Const.prototype.STATE_ERROR = 'test2';
-
-            var lOne = jasmine.createSpy();
-            var lTwo = jasmine.createSpy();
-
-            new Const()
-                .on('test1', lOne)
-                .on('test1', function () {
-                    throw 'error';
-                })
-                .onState('test2', lTwo)
-                .setState(1);
-
-            expect(lOne).toHaveBeenCalled();
-            expect(lTwo).toHaveBeenCalled();
-        });
+    describe('check instance:', function () {
+        it('inherit', checkInherit);
+        it('properties', checkProperties);
+        it('type', checkType);
 
         it('set initial state', function () {
-            expect(state.state).toBeNull();
             expect(new State(undefined).state).toBeUndefined();
             expect(new State(0).state).toBe(0);
             expect(new State(1).state).toBe(1);
@@ -86,16 +67,76 @@ describe('State:', function () {
             expect(new State('str').state).toBe('str');
             expect(new State({a: 1}).state).toEqual({a: 1});
         });
+    });
 
-        it('set inherited state', function () {
-            Const = getConst();
-            Const.prototype.state = 1;
+    describe('check inheritance for', function () {
+        beforeEach(function () {
+            Const = function () {
+                State.call(this);
+            };
 
-            expect(new Const().state).toBe(1);
+            State.create(Const, true);
+
+            state = new Const();
+        });
+
+        describe('constructor:', function () {
+            describe('prototype', function () {
+                it('inherit', checkPrototype);
+
+                it('changed constants', function () {
+                    Const.prototype.EVENT_CHANGE_STATE = 'test1';
+                    Const.prototype.STATE_ERROR = 'test2';
+
+                    var lOne = jasmine.createSpy();
+                    var lTwo = jasmine.createSpy();
+
+                    new Const()
+                        .on('test1', lOne)
+                        .on('test1', function () {
+                            throw 'error';
+                        })
+                        .onState('test2', lTwo)
+                        .setState(1);
+
+                    expect(lOne).toHaveBeenCalled();
+                    expect(lTwo).toHaveBeenCalled();
+                });
+
+                describe('change', function () {
+                    it('state', function () {
+                        Const.prototype.state = 1;
+
+                        expect(new Const().state).toBe(1);
+                    });
+
+                    it('data', function () {
+                        var data = Const.prototype.data = {
+                            a: 1
+                        };
+
+                        expect(new Const().data).toBe(data);
+                    });
+                })
+            });
+
+            it('static methods', function () {
+                for (var name in Const) {
+                    if (Const.hasOwnProperty(name)) {
+                        expect(Const[name]).toBe(State[name]);
+                    }
+                }
+            });
+        });
+
+        describe('instance:', function () {
+            it('inherit', checkInherit);
+            it('properties', checkProperties);
+            it('type', checkType);
         });
     });
 
-    describe('.isState', function () {
+    describe('isState', function () {
         it('check invalid arguments', function () {
             expect(State.isState()).toBeFalsy();
             expect(State.isState(null)).toBeFalsy();
@@ -104,60 +145,22 @@ describe('State:', function () {
             expect(State.isState({})).toBeFalsy();
         });
 
-        it('check instance', function () {
-            expect(State.isState(state)).toBeTruthy();
-        });
-
         it('check object', function () {
             expect(State.isState({
                 isState: true
             })).toBeTruthy();
         });
-
-        it('check inherited object', function () {
-            Const = getConst();
-            expect(State.isState(new Const())).toBeTruthy();
-        });
     });
 
-    describe('.create', function () {
-        it('check created object', function () {
-            var obj = State.create();
+    it('check created object', function () {
+        state = State.create();
 
-            expect(obj instanceof State);
-            expect(obj).not.toEqual(State.prototype);
-            expect(obj.hasOwnProperty('constructor')).toBeFalsy();
-            expect(obj.constructor).toBe(State);
+        checkInherit();
 
-            obj.constructor = State;
+        expect(state.hasOwnProperty('constructor')).toBeFalsy();
+        expect(state.constructor).toBe(State);
 
-            expect(obj).toEqual(State.prototype);
-
-            expect(obj === State.prototype).toBeFalsy();
-            expect(obj.data).toBeNull();
-            expect(obj.stateData).toBeNull();
-        });
-
-        it('check object as prototype', function () {
-            function Const() {
-            }
-
-            var proto = State.create(Const);
-
-            expect(Const.prototype).toBe(proto);
-            expect(proto.hasOwnProperty('constructor')).toBeTruthy();
-            expect(proto.constructor).toBe(Const);
-        });
-
-        it('check constructor with static methods', function () {
-            Const = getConst(true);
-
-            for (var name in Const) {
-                if (Const.hasOwnProperty(name)) {
-                    expect(Const[name]).toBe(State[name]);
-                }
-            }
-        });
+        expect(state === State.prototype).toBeFalsy();
     });
 
     it('throw error in listener should be set state "error"', function () {
@@ -170,12 +173,13 @@ describe('State:', function () {
         state.emit('event');
 
         expect(state.state).toBe('error');
-        expect(listener).toHaveBeenCalledWith('err');
+        expect(listener).toHaveBeenCalledWith(new Error('err'));
     });
 
     describe('set state', function () {
         function checkState(object, state) {
             object.setState(state);
+
             expect(object.state).toBe(state);
             expect(object.is(state)).toBeTruthy();
         }
@@ -447,16 +451,6 @@ describe('State:', function () {
                 .setData('key4');
         });
 
-        it('with prototype', function () {
-            Const = getConst();
-
-            var data = Const.prototype.data = {
-                a: 1
-            };
-
-            expect(new Const().data).toBe(data);
-        });
-
         it('set by key', function () {
             expect(state.data).toEqual({
                 key1: 'val1',
@@ -502,6 +496,12 @@ describe('State:', function () {
         });
     });
 
+    it('spread should returns of the method result', function () {
+        expect(state.spread(function () {
+            return listener;
+        })).toBe(listener);
+    });
+
     it('destroy', function () {
         state
             .on(1, function () {
@@ -518,5 +518,25 @@ describe('State:', function () {
                 expect(state[property]).toBeNull();
             }
         }
+    });
+
+    describe('bind', function () {
+        it('default context', function () {
+            var callback = state.bind(listener);
+
+            expect(callback).not.toBe(listener);
+
+            callback();
+
+            expect(listener.calls.mostRecent().object).toBe(state);
+        });
+
+        it('custom context', function () {
+            var ctx = {};
+
+            state.bind(listener, ctx)();
+
+            expect(listener.calls.mostRecent().object).toBe(ctx);
+        });
     });
 });
