@@ -155,6 +155,24 @@ describe('Queue:', function () {
         expect(queue === Queue.prototype).toBeFalsy();
     });
 
+    it('create queue via static method', function () {
+        queue = Response.queue(1, {}, listener);
+
+        expect(Queue.isQueue(queue)).toBeTruthy();
+        expect(queue.stack).toEqual([1, {}, listener]);
+        expect(queue.state).toBe('pending');
+        expect(queue.isStrict).toBeFalsy();
+    });
+
+    it('create strict queue via static method', function () {
+        queue = Response.strictQueue(1, {}, listener);
+
+        expect(Queue.isQueue(queue)).toBeTruthy();
+        expect(queue.stack).toEqual([1, {}, listener]);
+        expect(queue.state).toBe('pending');
+        expect(queue.isStrict).toBeTruthy();
+    });
+
     describe('start queue', function () {
         describe('via constructor:', function () {
             it('if queue is not started, state should be is "pending"', function () {
