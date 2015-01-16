@@ -1259,7 +1259,7 @@ function wrap(item) {
 }
 
 function toError(value) {
-    return value == null || (value instanceof Error) || getType(value) !== 'Error' ? new Error(value) : value;
+    return value != null && (getType(value) === 'Error' || value instanceof Error) ? value : new Error(value);
 }
 
 function changeState(object, state, data) {

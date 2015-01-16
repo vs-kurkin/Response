@@ -355,6 +355,22 @@ describe('Response:', function () {
                 expect(listener.calls.count()).toBe(1);
             });
 
+            it('Do not should wrap object of custom error', function () {
+                function MyErr(msg) {
+                    Error.call(this, msg);
+                }
+                MyErr.prototype = new Error();
+
+                resp
+                    .onReject(function (error) {
+                        expect(error instanceof MyErr).toBeTruthy();
+                        expect(this).toBe(ctx);
+                    }, ctx)
+                    .reject(new MyErr('error'))
+                    .reject('error')
+                    .onReject(listener, ctx);
+            });
+
             it('blank call should not clean state data', function () {
                 resp.onReject(listener, ctx).reject('error').reject();
 
