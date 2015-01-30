@@ -636,7 +636,7 @@ describe('State:', function () {
         it('should call a method toObject if any', function () {
             var object = {
                 toObject: function () {
-                    return 1;
+                    return false;
                 }
             };
 
@@ -644,7 +644,7 @@ describe('State:', function () {
                 .setState(1, [object])
                 .toObject(['first']))
                 .toEqual({
-                    first: 1
+                    first: false
                 });
         });
     });
