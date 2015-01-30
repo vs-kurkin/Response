@@ -377,7 +377,7 @@ State.prototype.toObject = function (keys) {
 
             if (key != null) {
                 item = this.stateData[index];
-                result[key] = item && item.toObject && item.toObject() || item;
+                result[key] = (item && item.toObject) ? item.toObject() : item;
             }
 
             index++;
