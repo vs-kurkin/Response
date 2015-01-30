@@ -369,6 +369,19 @@ describe('Queue:', function () {
                 expect(callStack).toEqual([1, 2, 3]);
             });
 
+            it('queue should be wait if function returned pending response object', function () {
+                var r = new Response();
+                queue = new Queue([function () {
+                    return r;
+                }], true);
+
+                expect(queue.state).toBe('pending');
+
+                r.resolve();
+
+                expect(queue.state).toBe('resolve');
+            });
+
             it('queue should not be rejected if a function has thrown an exception', function () {
                 queue = new Queue([function () {
                     throw 'error';
