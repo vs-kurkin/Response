@@ -1,7 +1,7 @@
 {
     "name": "Response",
     "author": "Vladislav Kurkin <b-vladi@cs-console.ru> (https://github.com/B-Vladi)",
-    "version": "0.0.30",
+    "version": "0.0.31",
     "main": "Response.js",
     "license": "MIT",
     "repository": {
@@ -12,7 +12,7 @@
         "node": "*"
     },
     "dependencies": {
-        "EventEmitter": "B-Vladi/EventEmitter#0.2.4"
+        "EventEmitter": "B-Vladi/EventEmitter.git#0.2.4"
     },
     "devDependencies": {
         "jasmine": "2.0.1",
