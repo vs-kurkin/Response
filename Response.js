@@ -251,7 +251,7 @@ State.prototype.setState = function (state, stateData) {
  *   .setState('bar');
  */
 State.prototype.onState = function (state, listener, context) {
-    if (this.is(state)) {
+    if (this.state === state) {
         invoke(this, listener, context);
     }
 
@@ -275,7 +275,7 @@ State.prototype.onState = function (state, listener, context) {
  *   .setState('foo');
  */
 State.prototype.onceState = function (state, listener, context) {
-    if (this.is(state)) {
+    if (this.state === state) {
         invoke(this, listener, context);
     } else {
         this.once(state, listener, context);
@@ -546,25 +546,12 @@ Response.queue = function (args) {
     return new Queue(stack);
 };
 
-/**
- *
- * @param {...*} [args]
- * @static
- * @returns {Queue}
- */
-Response.strictQueue = function (args) {
-    var index = arguments.length;
-    var stack = new Array(index);
-
-    while (index) {
-        stack[--index] = arguments[index];
-    }
-
-    return new Queue(stack).strict();
-};
-
 Response.prototype = State.create(Response);
 
+/**
+ * {@link State}
+ * @type {State}
+ */
 Response.prototype.State = State;
 
 /**
@@ -660,10 +647,10 @@ Response.prototype.progress = function (progress) {
  */
 Response.prototype.isPending = function () {
     return !(
-        this.hasOwnProperty('state') &&
-        this.state === null ||
-        this.state === this.STATE_RESOLVED ||
-        this.state === this.STATE_REJECTED
+    this.hasOwnProperty('state') &&
+    this.state === null ||
+    this.state === this.STATE_RESOLVED ||
+    this.state === this.STATE_REJECTED
     );
 };
 
@@ -962,7 +949,7 @@ Queue.create = create;
  * @returns {Boolean}
  */
 Queue.isQueue = function (object) {
-    return (object instanceof Queue) || object && object.isQueue;
+    return object != null && ((object instanceof Queue) || object.isQueue);
 };
 
 Queue.prototype = Response.create(Queue);
@@ -1031,7 +1018,7 @@ Queue.prototype.start = function () {
         this.isStarted = true;
         this.invoke(nativeEmit, wrapToArray(this.EVENT_START));
 
-        queueIterator(this);
+        iterate(this);
     }
 
     return this;
@@ -1139,13 +1126,13 @@ Queue.prototype.destroyItems = function () {
  */
 module.exports = Response;
 
-function queueIterator(queue) {
+function iterate(queue) {
     if (!queue.isStarted) {
         return;
     }
 
     while (queue.stack.length) {
-        if (checkFunction(queue) || changeItem(queue) || checkResponse(queue)) {
+        if (checkFunction(queue) || emitNext(queue) || checkResponse(queue)) {
             return;
         }
     }
@@ -1178,7 +1165,7 @@ function checkFunction(queue) {
     return !queue.isStarted;
 }
 
-function changeItem(queue) {
+function emitNext(queue) {
     queue.invoke(nativeEmit, new Array(queue.EVENT_NEXT_ITEM, queue.item));
 
     return !queue.isStarted;
@@ -1203,7 +1190,7 @@ function checkResponse(queue) {
 }
 
 function onEndStackItem() {
-    queueIterator(this);
+    iterate(this);
 }
 
 function getType(object) {
@@ -1252,7 +1239,7 @@ function changeState(object, state, data) {
 function invoke(emitter, listener, context) {
     if (isFunction(listener)) {
         emitter.invoke(listener, emitter.stateData, context);
-    } else if(isFunction(emitter && emitter.then)) {
+    } else if (isFunction(emitter && emitter.then)) {
         if (emitter._events && emitter._events[emitter.state]) {
             emitter.invoke(nativeEmit, wrapToArray(emitter.state).concat(emitter.stateData));
         }
@@ -1293,3 +1280,13 @@ function create(constructor, sp) {
 
     return new Constructor(constructor, this, sp);
 }
+
+
+(function start() {
+    var counter = 1000000;
+    console.time('timer');
+    while (counter--) {
+        Response.queue();
+    }
+    console.timeEnd('timer');
+})();
