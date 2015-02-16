@@ -360,31 +360,20 @@ State.prototype.bind = function (callback, context) {
 /**
  *
  * @param {Array} [keys=this.keys]
+ * @param {*} [state]
  * @returns {Object}
  */
-State.prototype.toObject = function (keys) {
+State.prototype.toObject = function (keys, state) {
     var _keys = keys == null ? this.keys : keys;
-    var key;
-    var item;
-    var result = {};
+    var hasFilter = arguments.length >= 2;
 
     if (isArray(_keys)) {
-        var length = this.stateData.length;
-        var index = 0;
-
-        while (index < length) {
-            key = _keys[index];
-
-            if (key != null) {
-                item = this.stateData[index];
-                result[key] = (item && item.toObject) ? item.toObject() : item;
-            }
-
-            index++;
-        }
+        return resultsToObject(this.stateData, _keys, state, hasFilter);
+    } else if (this.stateData.length > 1) {
+        return resultsToArray(this.stateData, state, hasFilter);
+    } else {
+        return toObject(this.stateData[0], state, hasFilter);
     }
-
-    return result;
 };
 
 /**
@@ -845,7 +834,7 @@ Response.prototype.callback = function defaultResponseCallback(error, results) {
  * @example
  * var Response = require('Response');
  * var r = new Response()
- *   .bind(function (data, textStatus, jqXHR) {
+ *   .makeCallback(function (data, textStatus, jqXHR) {
  *     if (data && data.error) {
  *        this.reject(data.error);
  *     } else {
@@ -885,25 +874,28 @@ Response.prototype.makeCallback = function (callback, context) {
  *   .getResult('bar') // 2, returns result on a default key
  *
  *
- * @param {String|Number|Array|Arguments} [key]
+ * @param {String|Number} [key]
+ * @param {*} [itemKey]
  * @returns {*}
  * @throws {Error}
  */
-Response.prototype.getResult = function (key) {
+Response.prototype.getResult = function (key, itemKey) {
+    var result;
+
     if (this.isRejected()) {
         return;
     }
 
     switch (getType(key)) {
         case 'String':
-            return this.getByKey(key);
         case 'Number':
-            return this.getByIndex(key);
-        case 'Array':
-        case 'Arguments':
-            return this.toObject(key);
+            result = this.getByKey(key);
+
+            return (result && result.toObject) ? result.toObject(itemKey, this.STATE_RESOLVED) : result;
+            break;
         default:
-            return this.stateData.length === 1 ? this.stateData[0] : this.stateData;
+            return this.toObject(key, this.STATE_RESOLVED);
+            break;
     }
 };
 
@@ -1050,10 +1042,10 @@ Queue.prototype.stop = function () {
 Queue.prototype.push = function (args) {
     var length = arguments.length;
     var index = 0;
-    var stackIndex = this.stack.length;
+    var stackLength = this.stack.length;
 
     while (index < length) {
-        this.stack[stackIndex++] = arguments[index++];
+        this.stack[stackLength++] = arguments[index++];
     }
 
     return this;
@@ -1236,6 +1228,43 @@ function changeState(object, state, data) {
     }
 }
 
+function resultsToObject (data, keys, hasFilter) {
+    var index = 0;
+    var length = data.length;
+    var result = {};
+    var key;
+
+    while (index < length) {
+        key = keys[index];
+
+        if (key != null) {
+            result[key] = toObject(data[index], hasFilter);
+        }
+
+        index++;
+    }
+
+    return result;
+}
+
+function resultsToArray (data, hasFilter) {
+    var index = 0;
+    var length = data.length;
+    var result = new Array(length);
+
+    while (index < length) {
+        result[index] = toObject(data[index], hasFilter);
+    }
+
+    return result;
+}
+
+function toObject(item, state, hasFilter) {
+    if (!(hasFilter && State.isState(item) && !item.is(state))) {
+        return (item && item.toObject) ? item.toObject(null, state, hasFilter) : item;
+    }
+}
+
 function invoke(emitter, listener, context) {
     if (isFunction(listener)) {
         emitter.invoke(listener, emitter.stateData, context);
@@ -1248,45 +1277,34 @@ function invoke(emitter, listener, context) {
     }
 }
 
-function Constructor(constructor, parent, sp) {
-    var prototype = parent.prototype;
+function Prototype(constructor) {
+    var proto = Prototype.prototype;
     var name;
 
-    for (name in prototype) {
-        if (prototype.hasOwnProperty(name) && name !== 'constructor') {
-            this[name] = prototype[name];
+    for (name in proto) {
+        if (proto.hasOwnProperty(name) && name !== 'constructor') {
+            this[name] = proto[name];
         }
     }
 
     if (constructor) {
         this.constructor = constructor;
-
         constructor.prototype = this;
+    }
 
-        if (sp === true) {
-            for (name in parent) {
-                if (parent.hasOwnProperty(name)) {
-                    constructor[name] = parent[name];
-                }
+    Prototype.prototype = null;
+}
+
+function create(constructor, sp) {
+    if (constructor && sp === true) {
+        for (var name in this) {
+            if (this.hasOwnProperty(name)) {
+                constructor[name] = this[name];
             }
         }
     }
 
-    Constructor.prototype = null;
+    Prototype.prototype = this.prototype;
+
+    return new Prototype(constructor);
 }
-
-function create(constructor, sp) {
-    Constructor.prototype = this.prototype;
-
-    return new Constructor(constructor, this, sp);
-}
-
-
-(function start() {
-    var counter = 1000000;
-    console.time('timer');
-    while (counter--) {
-        Response.queue();
-    }
-    console.timeEnd('timer');
-})();
