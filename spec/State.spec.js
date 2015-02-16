@@ -570,8 +570,8 @@ describe('State:', function () {
     });
 
     describe('toObject', function () {
-        it('should be returns empty object if no results', function () {
-            expect(state.toObject()).toEqual({});
+        it('should be returns undefined if no results', function () {
+            expect(state.toObject()).toEqual(undefined);
         });
 
         it('should be returns empty object if have keys and no results', function () {
