@@ -360,19 +360,17 @@ State.prototype.bind = function (callback, context) {
 /**
  *
  * @param {Array} [keys=this.keys]
- * @param {*} [state]
  * @returns {Object}
  */
-State.prototype.toObject = function (keys, state) {
+State.prototype.toObject = function (keys) {
     var _keys = keys == null ? this.keys : keys;
-    var hasFilter = arguments.length >= 2;
 
     if (isArray(_keys)) {
-        return resultsToObject(this.stateData, _keys, state, hasFilter);
+        return resultsToObject(this.stateData, _keys);
     } else if (this.stateData.length > 1) {
-        return resultsToArray(this.stateData, state, hasFilter);
+        return resultsToArray(this.stateData);
     } else {
-        return toObject(this.stateData[0], state, hasFilter);
+        return toObject(this.stateData[0]);
     }
 };
 
@@ -873,28 +871,22 @@ Response.prototype.makeCallback = function (callback, context) {
  *   .setKeys(['foo', 'bar']) // sets a default keys
  *   .getResult('bar') // 2, returns result on a default key
  *
- *
  * @param {String|Number} [key]
- * @param {*} [itemKey]
  * @returns {*}
  * @throws {Error}
  */
-Response.prototype.getResult = function (key, itemKey) {
-    var result;
-
+Response.prototype.getResult = function (key) {
     if (this.isRejected()) {
-        return;
+        return {};
     }
 
     switch (getType(key)) {
         case 'String':
         case 'Number':
-            result = this.getByKey(key);
-
-            return (result && result.toObject) ? result.toObject(itemKey, this.STATE_RESOLVED) : result;
+            return toObject(this.getByKey(key));
             break;
         default:
-            return this.toObject(key, this.STATE_RESOLVED);
+            return this.toObject(key);
             break;
     }
 };
@@ -1049,6 +1041,74 @@ Queue.prototype.push = function (args) {
     }
 
     return this;
+};
+
+/**
+ *
+ * @returns {Object}
+ */
+Queue.prototype.getResults = function () {
+    var length = this.stateData.length;
+    var index = 0;
+    var results = {};
+    var key;
+    var item;
+
+    if (this.isRejected()) {
+        return results;
+    }
+
+    while (index < length) {
+        key = this.keys[index];
+
+        if (key != null) {
+            item = this.stateData[index];
+
+            if (Queue.isQueue(item)) {
+                results[key] = item.getResult();
+            } else if (Response.isResponse(item)) {
+                results[key] = item.getResults();
+            } else if (!(item instanceof Error)) {
+                results[key] = item;
+            }
+        }
+
+        index++;
+    }
+
+    return results;
+};
+
+/**
+ *
+ * @returns {Object}
+ */
+Queue.prototype.getReasons = function () {
+    var length = this.stateData.length;
+    var index = 0;
+    var results = {};
+    var key;
+    var item;
+
+    while (index < length) {
+        key = this.keys[index];
+
+        if (key != null) {
+            item = this.stateData[index];
+
+            if (Queue.isQueue(item)) {
+                results[key] = item.getReason();
+            } else if (Response.isResponse(item)) {
+                results[key] = item.getReasons();
+            } else if (item instanceof Error) {
+                results[key] = item;
+            }
+        }
+
+        index++;
+    }
+
+    return results;
 };
 
 /**
@@ -1228,7 +1288,7 @@ function changeState(object, state, data) {
     }
 }
 
-function resultsToObject (data, keys, hasFilter) {
+function resultsToObject (data, keys) {
     var index = 0;
     var length = data.length;
     var result = {};
@@ -1238,7 +1298,7 @@ function resultsToObject (data, keys, hasFilter) {
         key = keys[index];
 
         if (key != null) {
-            result[key] = toObject(data[index], hasFilter);
+            result[key] = toObject(data[index]);
         }
 
         index++;
@@ -1247,22 +1307,20 @@ function resultsToObject (data, keys, hasFilter) {
     return result;
 }
 
-function resultsToArray (data, hasFilter) {
+function resultsToArray (data) {
     var index = 0;
     var length = data.length;
     var result = new Array(length);
 
     while (index < length) {
-        result[index] = toObject(data[index], hasFilter);
+        result[index] = toObject(data[index++]);
     }
 
     return result;
 }
 
-function toObject(item, state, hasFilter) {
-    if (!(hasFilter && State.isState(item) && !item.is(state))) {
-        return (item && item.toObject) ? item.toObject(null, state, hasFilter) : item;
-    }
+function toObject(item) {
+    return (item && item.toObject) ? item.toObject() : item;
 }
 
 function invoke(emitter, listener, context) {
