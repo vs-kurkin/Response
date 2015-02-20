@@ -877,7 +877,7 @@ Response.prototype.makeCallback = function (callback, context) {
  */
 Response.prototype.getResult = function (key) {
     if (this.isRejected()) {
-        return {};
+        return undefined;
     }
 
     switch (getType(key)) {
