@@ -215,7 +215,7 @@ State.prototype.is = function (state) {
  *   .setState('foo', [true, false]);
  */
 State.prototype.setState = function (state, stateData) {
-    var _state = !this.is(state);
+    var _state = this.state !== state;
     var _hasData = arguments.length > 1;
     var _data = _hasData ? wrapIfArray(stateData) : new Array(0);
 
@@ -1000,7 +1000,7 @@ Queue.prototype.item = null;
 Queue.prototype.start = function () {
     if (!this.isStarted && this.isPending()) {
         this.isStarted = true;
-        this.invoke(nativeEmit, wrapToArray(this.EVENT_START));
+        this.invoke(nativeEmit, newArray(this.EVENT_START));
 
         iterate(this);
     }
@@ -1016,8 +1016,7 @@ Queue.prototype.stop = function () {
     if (this.isStarted === true) {
         this.isStarted = false;
 
-        if (!this.isPending()) {
-            this.stack.length = 0;
+        if (this.stack.length === 0) {
             this.item = null;
         }
 
@@ -1159,10 +1158,11 @@ Queue.prototype.onNextItem = function (listener, context) {
  * @returns {Queue}
  */
 Queue.prototype.destroyItems = function () {
-    var index = this.stateData.length;
+    var stack = this.stack.concat(this.stateData);
+    var index = stack.length;
 
     while (index) {
-        var item = this.stateData[--index];
+        var item = stack[--index];
 
         if (State.isState(item)) {
             item.destroy();
@@ -1184,48 +1184,42 @@ function iterate(queue) {
     }
 
     while (queue.stack.length) {
-        if (checkFunction(queue) || emitNext(queue) || checkResponse(queue)) {
+        if (checkFunction(queue, queue.item) || emitNext(queue, queue.item) || checkResponse(queue, queue.item)) {
             return;
         }
+
+        queue.stateData.push(queue.stack.shift());
     }
 
     queue.setState(queue.STATE_RESOLVED, queue.stateData);
 }
 
 // TODO: fixed "Did not inline State.onceState called from checkResponse (cumulative AST node limit reached)."
-function checkFunction(queue) {
-    var results;
-    var item = queue.stack.shift();
+function checkFunction(queue, item) {
+    queue.item = queue.stack[0];
 
-    if (isFunction(item)) {
-        var current = queue.item;
+    if (isFunction(queue.item)) {
+        var results;
 
-        if (Response.isResponse(queue.item)) {
-            results = current.state === current.STATE_RESOLVED ? current.stateData : null;
+        if (Response.isResponse(item)) {
+            results = item.state === item.STATE_RESOLVED ? item.stateData : null;
         } else {
-            results = wrapToArray(current);
+            results = newArray(item);
         }
 
-        item = queue.invoke.call(queue.isStrict ? queue : null, item, results, queue);
-    }
-
-    if (queue.isPending()) {
-        queue.stateData.push(item);
-        queue.item = item;
+        queue.stack[0] = queue.item = queue.invoke.call(queue.isStrict ? queue : null, queue.item, results, queue);
     }
 
     return !queue.isStarted;
 }
 
-function emitNext(queue) {
-    queue.invoke(nativeEmit, new Array(queue.EVENT_NEXT_ITEM, queue.item));
+function emitNext(queue, item) {
+    queue.invoke(nativeEmit, new Array(queue.EVENT_NEXT_ITEM, item));
 
     return !queue.isStarted;
 }
 
-function checkResponse(queue) {
-    var item = queue.item;
-
+function checkResponse(queue, item) {
     if (item && Response.isResponse(item) && item !== queue) {
         if (item.state === item.STATE_REJECTED && queue.isStrict) {
             queue.setState(queue.STATE_REJECTED, item.stateData);
@@ -1242,7 +1236,11 @@ function checkResponse(queue) {
 }
 
 function onEndStackItem() {
-    iterate(this);
+    if (this.isStarted) {
+        this.stateData.push(this.stack.shift());
+
+        iterate(this);
+    }
 }
 
 function getType(object) {
@@ -1254,10 +1252,10 @@ function isArray(object) {
 }
 
 function wrapIfArray(object) {
-    return isArray(object) ? object : wrapToArray(object);
+    return isArray(object) ? object : newArray(object);
 }
 
-function wrapToArray(item) {
+function newArray(item) {
     var _array = new Array(1);
     _array[0] = item;
     return _array;
@@ -1279,10 +1277,10 @@ function changeState(object, state, data) {
 
     if (_events) {
         if (_events[state]) {
-            object.invoke(nativeEmit, wrapToArray(state).concat(data));
+            object.invoke(nativeEmit, newArray(state).concat(data));
         }
 
-        if (_events[object.EVENT_CHANGE_STATE] && object.is(state)) {
+        if (_events[object.EVENT_CHANGE_STATE] && object.state === state) {
             object.invoke(nativeEmit, new Array(object.EVENT_CHANGE_STATE, state));
         }
     }
@@ -1326,9 +1324,9 @@ function toObject(item) {
 function invoke(emitter, listener, context) {
     if (isFunction(listener)) {
         emitter.invoke(listener, emitter.stateData, context);
-    } else if (isFunction(emitter && emitter.then)) {
+    } else if (emitter && isFunction(emitter.then)) {
         if (emitter._events && emitter._events[emitter.state]) {
-            emitter.invoke(nativeEmit, wrapToArray(emitter.state).concat(emitter.stateData));
+            emitter.invoke(nativeEmit, newArray(emitter.state).concat(emitter.stateData));
         }
     } else {
         throw new Error(EventEmitter.LISTENER_TYPE_ERROR);

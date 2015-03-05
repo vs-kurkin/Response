@@ -238,21 +238,24 @@ describe('Queue:', function () {
             });
 
             it('start queue after stopping', function () {
-                queue = new Queue([function () {
+                var stack = [function () {
                     this.stop();
                     return 1;
-                }, listener], true);
+                }, listener];
+
+                queue = new Queue(stack, true);
 
                 expect(listener).not.toHaveBeenCalled();
                 expect(queue.isStarted).toBe(false);
                 expect(queue.item).toBe(1);
-                expect(queue.stateData).toEqual([1]);
-                expect(queue.stack).toEqual([listener]);
+                expect(queue.stateData).toEqual([]);
+                expect(queue.stack).toEqual(stack);
                 expect(queue.state).toBe('pending');
 
                 queue.start();
 
                 expect(listener.calls.count()).toBe(1);
+                expect(queue.stateData).toEqual([1, undefined]);
                 expect(queue.state).toBe('resolve');
             });
 
@@ -305,8 +308,8 @@ describe('Queue:', function () {
                 expect(listener).toHaveBeenCalled();
                 expect(queue.isStarted).toBe(false);
                 expect(queue.item).toBe(1);
-                expect(queue.stateData).toEqual([1]);
-                expect(queue.stack).toEqual([2]);
+                expect(queue.stateData).toEqual([]);
+                expect(queue.stack).toEqual([1, 2]);
                 expect(queue.state).toBe('pending');
             });
 
@@ -339,18 +342,31 @@ describe('Queue:', function () {
                 }, {}], true).stateData).toEqual([1, 2, {}]);
             });
 
+            it('argument of function should be last element of stack or result of response or null', function () {
+                var r = new Response().resolve(2);
+
+                queue = new Queue([function (i) {
+                    expect(i).toBeNull();
+                    return 1;
+                }, function (i) {
+                    expect(i).toBe(1);
+                }, r, function (i) {
+                    expect(i).toBe(2);
+                }], true);
+            });
+
             it('the execution order must match the stack', function () {
                 var callStack = [];
 
-                function i1() {
+                function i1(i) {
                     callStack.push(1);
                 }
 
-                function i2() {
+                function i2(i) {
                     callStack.push(2);
                 }
 
-                function i3() {
+                function i3(i) {
                     callStack.push(3);
                 }
 
@@ -400,15 +416,15 @@ describe('Queue:', function () {
 
                 queue = new Queue([r1, r2, r3], true);
 
-                expect(queue.stack).toEqual([r2, r3]);
-                expect(queue.stateData).toEqual([r1]);
+                expect(queue.stack).toEqual([r1, r2, r3]);
+                expect(queue.stateData).toEqual([]);
                 expect(queue.item).toBe(r1);
                 expect(queue.state).toBe('pending');
 
                 r1.resolve();
 
-                expect(queue.stack).toEqual([r3]);
-                expect(queue.stateData).toEqual([r1, r2]);
+                expect(queue.stack).toEqual([r2, r3]);
+                expect(queue.stateData).toEqual([r1]);
                 expect(queue.item).toBe(r2);
                 expect(queue.state).toBe('pending');
 
@@ -421,7 +437,9 @@ describe('Queue:', function () {
             });
 
             it('strict queue should be rejected if item is rejected', function () {
-                queue = new Queue([new Response().reject('error')])
+                var r = new Response().reject('error');
+
+                queue = new Queue([r])
                     .on('error', listener)
                     .on('stop', listener)
                     .strict()
@@ -429,7 +447,7 @@ describe('Queue:', function () {
 
                 expect(queue.state).toBe('error');
                 expect(queue.stateData).toEqual([new Error('error')]);
-                expect(queue.item).toBeNull();
+                expect(queue.item).toBe(r);
                 expect(listener.calls.count()).toBe(2);
             });
 
