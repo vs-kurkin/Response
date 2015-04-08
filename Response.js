@@ -110,61 +110,45 @@ State.prototype.stateData = null;
  */
 State.prototype.invoke = function (method, args, context) {
     var ctx = context == null ? this : context;
+    var result;
     var _args = (args && !isNaN(args.length)) ? args : new Array(0);
-    var r;
 
     try {
         switch (_args.length) {
             case 0:
-                r = method.call(ctx);
+                result = method.call(ctx);
                 break;
             case 1:
-                r = method.call(ctx, _args[0]);
+                result = method.call(ctx, _args[0]);
                 break;
             case 2:
-                r = method.call(ctx, _args[0], _args[1]);
+                result = method.call(ctx, _args[0], _args[1]);
                 break;
             case 3:
-                r = method.call(ctx, _args[0], _args[1], _args[2]);
+                result = method.call(ctx, _args[0], _args[1], _args[2]);
                 break;
             case 4:
-                r = method.call(ctx, _args[0], _args[1], _args[2], _args[3]);
+                result = method.call(ctx, _args[0], _args[1], _args[2], _args[3]);
                 break;
             case 5:
-                r = method.call(ctx, _args[0], _args[1], _args[2], _args[3], _args[4]);
+                result = method.call(ctx, _args[0], _args[1], _args[2], _args[3], _args[4]);
                 break;
             default:
-                r = method.apply(ctx, _args);
+                result = method.apply(ctx, _args);
         }
     } catch (error) {
-        r = toError(error);
+        result = toError(error);
 
         if (this && this.isState) {
-            this.setState(this.STATE_ERROR, r);
+            /*if (this.state === this.STATE_ERROR) {
+                throw result;
+            }
+*/
+            this.setState(this.STATE_ERROR, result);
         }
     }
 
-    return r;
-};
-
-/**
- * @param {String} type Тип события.
- * @param {...*} [args] Аргументы, передаваемые в обработчик события.
- * @returns {Boolean|Error}
- */
-State.prototype.emit = function (type, args) {
-    if (this._events && this._events[type]) {
-        var index = arguments.length;
-        var data = new Array(index);
-
-        while (index) {
-            data[--index] = arguments[index];
-        }
-
-        return this.invoke(nativeEmit, data);
-    }
-
-    return false;
+    return result;
 };
 
 /**
@@ -172,10 +156,11 @@ State.prototype.emit = function (type, args) {
  * @returns {State}
  */
 State.prototype.destroy = function () {
-    for (var property in this) {
-        if (this.hasOwnProperty(property)) {
-            this[property] = null;
-        }
+    var keys = getKeys(this);
+    var index = keys.length;
+
+    while(index) {
+        this[keys[--index]] = null;
     }
 
     return this;
@@ -623,8 +608,8 @@ Response.prototype.reject = function (reason) {
  * @returns {Response}
  */
 Response.prototype.progress = function (progress) {
-    if (this.isPending() && this._events && this._events[this.EVENT_PROGRESS]) {
-        this.invoke(nativeEmit, new Array(this.EVENT_PROGRESS, progress));
+    if (this.isPending()) {
+        emit(this, new Array(this.EVENT_PROGRESS, progress));
     }
 
     return this;
@@ -1008,7 +993,8 @@ Queue.prototype.item = null;
 Queue.prototype.start = function () {
     if (!this.isStarted && this.isPending()) {
         this.isStarted = true;
-        this.invoke(nativeEmit, wrapToArray(this.EVENT_START));
+
+        emit(this, newArray(this.EVENT_START));
 
         iterate(this);
     }
@@ -1029,7 +1015,7 @@ Queue.prototype.stop = function () {
             this.item = null;
         }
 
-        this.invoke(nativeEmit, new Array(this.EVENT_STOP, this.item));
+        emit(this, new Array(this.EVENT_STOP, this.item));
     }
 
     return this;
@@ -1157,8 +1143,8 @@ function checkFunction(queue) {
     return !queue.isStarted;
 }
 
-function emitNext(queue) {
-    queue.invoke(nativeEmit, new Array(queue.EVENT_NEXT_ITEM, queue.item));
+function emitNext(queue, item) {
+    emit(queue, new Array(queue.EVENT_NEXT_ITEM, item));
 
     return !queue.isStarted;
 }
@@ -1212,23 +1198,17 @@ function toError(value) {
 }
 
 function changeState(object, state, data) {
-    var _events = object._events;
-
     object.stopEmit(object.state);
     object.state = state;
 
-    if (_events) {
-        if (_events[state]) {
-            object.invoke(nativeEmit, wrapToArray(state).concat(data));
-        }
+    emit(object, newArray(state).concat(data));
 
-        if (_events[object.EVENT_CHANGE_STATE] && object.is(state)) {
-            object.invoke(nativeEmit, new Array(object.EVENT_CHANGE_STATE, state));
-        }
+    if (object.state === state) {
+        emit(object, new Array(object.EVENT_CHANGE_STATE, state));
     }
 }
 
-function resultsToObject (data, keys, hasFilter) {
+function resultsToObject(data, keys) {
     var index = 0;
     var length = data.length;
     var result = {};
@@ -1247,7 +1227,7 @@ function resultsToObject (data, keys, hasFilter) {
     return result;
 }
 
-function resultsToArray (data, hasFilter) {
+function resultsToArray(data) {
     var index = 0;
     var length = data.length;
     var result = new Array(length);
@@ -1268,43 +1248,74 @@ function toObject(item, state, hasFilter) {
 function invoke(emitter, listener, context) {
     if (isFunction(listener)) {
         emitter.invoke(listener, emitter.stateData, context);
-    } else if (isFunction(emitter && emitter.then)) {
-        if (emitter._events && emitter._events[emitter.state]) {
-            emitter.invoke(nativeEmit, wrapToArray(emitter.state).concat(emitter.stateData));
-        }
+    } else if (emitter && isFunction(emitter.then)) {
+        emit(emitter, newArray(emitter.state).concat(emitter.stateData));
     } else {
         throw new Error(EventEmitter.LISTENER_TYPE_ERROR);
     }
 }
 
-function Prototype(constructor) {
-    var proto = Prototype.prototype;
-    var name;
+function emit (emitter, data) {
+    var _events = emitter._events;
+    var type = data[0];
 
-    for (name in proto) {
-        if (proto.hasOwnProperty(name) && name !== 'constructor') {
-            this[name] = proto[name];
-        }
-    }
-
-    if (constructor) {
-        this.constructor = constructor;
-        constructor.prototype = this;
-    }
-
-    Prototype.prototype = null;
+    if (_events && _events[type]) {
+        emitter.invoke(nativeEmit, data);
+    }/* else if (type === emitter.STATE_ERROR) {
+        throw new Error('Uncaught, unspecified "error" event.');
+    }*/
 }
 
 function create(constructor, sp) {
-    if (constructor && sp === true) {
-        for (var name in this) {
-            if (this.hasOwnProperty(name)) {
-                constructor[name] = this[name];
+    var proto;
+
+    if (Object.create) {
+        proto = Object.create(this.prototype, constructor ? {
+            constructor: {
+                value: constructor,
+                enumerable: false,
+                writable: true,
+                configurable: true
             }
+        } : undefined);
+    } else {
+        Prototype.prototype = this.prototype;
+        proto = new Prototype();
+        Prototype.prototype = null;
+    }
+
+    if (constructor) {
+        if (sp === true) {
+            for (var name in this) {
+                if (this.hasOwnProperty(name)) {
+                    constructor[name] = this[name];
+                }
+            }
+        }
+
+        constructor.prototype = proto;
+    }
+
+    for (name in this.prototype) {
+        if (this.prototype.hasOwnProperty(name) && name !== 'constructor') {
+            proto[name] = this.prototype[name];
         }
     }
 
-    Prototype.prototype = this.prototype;
-
-    return new Prototype(constructor);
+    return proto;
 }
+
+function Prototype() {
+}
+
+var getKeys = isFunction(Object.keys) ? Object.keys : function (object) {
+    var keys = new Array();
+
+    for (var name in object) {
+        if (object.hasOwnProperty(name)) {
+            keys.push(name);
+        }
+    }
+
+    return keys;
+};
