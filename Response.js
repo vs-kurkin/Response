@@ -140,10 +140,6 @@ State.prototype.invoke = function (method, args, context) {
         result = toError(error);
 
         if (this && this.isState) {
-            /*if (this.state === this.STATE_ERROR) {
-                throw result;
-            }
-*/
             this.setState(this.STATE_ERROR, result);
         }
     }
@@ -200,7 +196,7 @@ State.prototype.is = function (state) {
  *   .setState('foo', [true, false]);
  */
 State.prototype.setState = function (state, stateData) {
-    var _state = !this.is(state);
+    var _state = this.state !== state;
     var _hasData = arguments.length > 1;
     var _data = _hasData ? wrapIfArray(stateData) : new Array(0);
 
@@ -345,19 +341,17 @@ State.prototype.bind = function (callback, context) {
 /**
  *
  * @param {Array} [keys=this.keys]
- * @param {*} [state]
  * @returns {Object}
  */
-State.prototype.toObject = function (keys, state) {
+State.prototype.toObject = function (keys) {
     var _keys = keys == null ? this.keys : keys;
-    var hasFilter = arguments.length >= 2;
 
     if (isArray(_keys)) {
-        return resultsToObject(this.stateData, _keys, state, hasFilter);
+        return resultsToObject(this.stateData, _keys);
     } else if (this.stateData.length > 1) {
-        return resultsToArray(this.stateData, state, hasFilter);
+        return resultsToArray(this.stateData);
     } else {
-        return toObject(this.stateData[0], state, hasFilter);
+        return toObject(this.stateData[0]);
     }
 };
 
@@ -858,28 +852,22 @@ Response.prototype.makeCallback = function (callback, context) {
  *   .setKeys(['foo', 'bar']) // sets a default keys
  *   .getResult('bar') // 2, returns result on a default key
  *
- *
  * @param {String|Number} [key]
- * @param {*} [itemKey]
  * @returns {*}
  * @throws {Error}
  */
-Response.prototype.getResult = function (key, itemKey) {
-    var result;
-
+Response.prototype.getResult = function (key) {
     if (this.isRejected()) {
-        return;
+        return undefined;
     }
 
     switch (getType(key)) {
         case 'String':
         case 'Number':
-            result = this.getByKey(key);
-
-            return (result && result.toObject) ? result.toObject(itemKey, this.STATE_RESOLVED) : result;
+            return toObject(this.getByKey(key));
             break;
         default:
-            return this.toObject(key, this.STATE_RESOLVED);
+            return this.toObject(key);
             break;
     }
 };
@@ -1010,8 +998,7 @@ Queue.prototype.stop = function () {
     if (this.isStarted === true) {
         this.isStarted = false;
 
-        if (!this.isPending()) {
-            this.stack.length = 0;
+        if (this.stack.length === 0) {
             this.item = null;
         }
 
@@ -1035,6 +1022,74 @@ Queue.prototype.push = function (args) {
     }
 
     return this;
+};
+
+/**
+ *
+ * @returns {Object}
+ */
+Queue.prototype.getResults = function () {
+    var length = this.stateData.length;
+    var index = 0;
+    var results = {};
+    var key;
+    var item;
+
+    if (this.isRejected()) {
+        return results;
+    }
+
+    while (index < length) {
+        key = this.keys[index];
+
+        if (key != null) {
+            item = this.stateData[index];
+
+            if (Queue.isQueue(item)) {
+                results[key] = item.getResult();
+            } else if (Response.isResponse(item)) {
+                results[key] = item.getResults();
+            } else if (!(item instanceof Error)) {
+                results[key] = item;
+            }
+        }
+
+        index++;
+    }
+
+    return results;
+};
+
+/**
+ *
+ * @returns {Object}
+ */
+Queue.prototype.getReasons = function () {
+    var length = this.stateData.length;
+    var index = 0;
+    var results = {};
+    var key;
+    var item;
+
+    while (index < length) {
+        key = this.keys[index];
+
+        if (key != null) {
+            item = this.stateData[index];
+
+            if (Queue.isQueue(item)) {
+                results[key] = item.getReason();
+            } else if (Response.isResponse(item)) {
+                results[key] = item.getReasons();
+            } else if (item instanceof Error) {
+                results[key] = item;
+            }
+        }
+
+        index++;
+    }
+
+    return results;
 };
 
 /**
@@ -1085,10 +1140,11 @@ Queue.prototype.onNextItem = function (listener, context) {
  * @returns {Queue}
  */
 Queue.prototype.destroyItems = function () {
-    var index = this.stateData.length;
+    var stack = this.stack.concat(this.stateData);
+    var index = stack.length;
 
     while (index) {
-        var item = this.stateData[--index];
+        var item = stack[--index];
 
         if (State.isState(item)) {
             item.destroy();
@@ -1110,34 +1166,30 @@ function iterate(queue) {
     }
 
     while (queue.stack.length) {
-        if (checkFunction(queue) || emitNext(queue) || checkResponse(queue)) {
+        if (checkFunction(queue, queue.item) || emitNext(queue, queue.item) || checkResponse(queue, queue.item)) {
             return;
         }
+
+        queue.stateData.push(queue.stack.shift());
     }
 
     queue.setState(queue.STATE_RESOLVED, queue.stateData);
 }
 
 // TODO: fixed "Did not inline State.onceState called from checkResponse (cumulative AST node limit reached)."
-function checkFunction(queue) {
-    var results;
-    var item = queue.stack.shift();
+function checkFunction(queue, item) {
+    queue.item = queue.stack[0];
 
-    if (isFunction(item)) {
-        var current = queue.item;
+    if (isFunction(queue.item)) {
+        var results;
 
-        if (Response.isResponse(queue.item)) {
-            results = current.state === current.STATE_RESOLVED ? current.stateData : null;
+        if (Response.isResponse(item)) {
+            results = item.state === item.STATE_RESOLVED ? item.stateData : null;
         } else {
-            results = wrapToArray(current);
+            results = newArray(item);
         }
 
-        item = queue.invoke.call(queue.isStrict ? queue : null, item, results, queue);
-    }
-
-    if (queue.isPending()) {
-        queue.stateData.push(item);
-        queue.item = item;
+        queue.stack[0] = queue.item = queue.invoke.call(queue.isStrict ? queue : null, queue.item, results, queue);
     }
 
     return !queue.isStarted;
@@ -1149,9 +1201,7 @@ function emitNext(queue, item) {
     return !queue.isStarted;
 }
 
-function checkResponse(queue) {
-    var item = queue.item;
-
+function checkResponse(queue, item) {
     if (item && Response.isResponse(item) && item !== queue) {
         if (item.state === item.STATE_REJECTED && queue.isStrict) {
             queue.setState(queue.STATE_REJECTED, item.stateData);
@@ -1168,7 +1218,11 @@ function checkResponse(queue) {
 }
 
 function onEndStackItem() {
-    iterate(this);
+    if (this.isStarted) {
+        this.stateData.push(this.stack.shift());
+
+        iterate(this);
+    }
 }
 
 function getType(object) {
@@ -1180,10 +1234,10 @@ function isArray(object) {
 }
 
 function wrapIfArray(object) {
-    return isArray(object) ? object : wrapToArray(object);
+    return isArray(object) ? object : newArray(object);
 }
 
-function wrapToArray(item) {
+function newArray(item) {
     var _array = new Array(1);
     _array[0] = item;
     return _array;
@@ -1218,7 +1272,7 @@ function resultsToObject(data, keys) {
         key = keys[index];
 
         if (key != null) {
-            result[key] = toObject(data[index], hasFilter);
+            result[key] = toObject(data[index]);
         }
 
         index++;
@@ -1233,16 +1287,14 @@ function resultsToArray(data) {
     var result = new Array(length);
 
     while (index < length) {
-        result[index] = toObject(data[index], hasFilter);
+        result[index] = toObject(data[index++]);
     }
 
     return result;
 }
 
-function toObject(item, state, hasFilter) {
-    if (!(hasFilter && State.isState(item) && !item.is(state))) {
-        return (item && item.toObject) ? item.toObject(null, state, hasFilter) : item;
-    }
+function toObject(item) {
+    return (item && item.toObject) ? item.toObject() : item;
 }
 
 function invoke(emitter, listener, context) {
