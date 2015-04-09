@@ -6,7 +6,7 @@
         "benchmark" : "1.0.0"
     },
     "scripts": {
-        "test": "npm install && node start.js --harmony"
+        "test": "node start.js"
     },
     "private" : true
 }
