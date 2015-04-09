@@ -5,7 +5,6 @@
 
 var EventEmitter = require('EventEmitter');
 var toString = Object.prototype.toString;
-var _emit = EventEmitter.prototype.emit;
 
 /**
  *
@@ -602,7 +601,7 @@ Response.prototype.reject = function (reason) {
  * @returns {Response}
  */
 Response.prototype.progress = function (progress) {
-    if (this.isPending() && this._events && (this.EVENT_PROGRESS in this._events)) {
+    if (this.isPending()) {
         emit(this, this.EVENT_PROGRESS, [progress]);
     }
 
@@ -861,7 +860,7 @@ Response.prototype.getResult = function (key) {
         return undefined;
     }
 
-    switch (getType(key)) {
+    switch (typeof key) {
         case 'String':
         case 'Number':
             return toObject(this.getByKey(key));
@@ -899,7 +898,7 @@ function Queue(stack, start) {
         .onState(this.STATE_RESOLVED, this.stop)
         .onState(this.STATE_REJECTED, this.stop);
 
-    if (getType(start) === 'Boolean' ? start.valueOf() : false) {
+    if (typeof start === 'boolean' ? start.valueOf() : false) {
         this.start();
     }
 
@@ -982,9 +981,7 @@ Queue.prototype.start = function () {
     if (!this.isStarted && this.isPending()) {
         this.isStarted = true;
 
-        if (this._events && (this.EVENT_START in this._events)) {
-            emit(this, this.EVENT_START, []);
-        }
+        emit(this, this.EVENT_START, []);
 
         iterate(this);
     }
@@ -1004,9 +1001,7 @@ Queue.prototype.stop = function () {
             this.item = null;
         }
 
-        if (this._events && (this.EVENT_STOP in this._events)) {
-            emit(this, this.EVENT_STOP, []);
-        }
+        emit(this, this.EVENT_STOP, []);
     }
 
     return this;
@@ -1199,9 +1194,7 @@ function checkFunction(queue, item) {
 }
 
 function emitNext(queue, item) {
-    if (queue._events && (queue.EVENT_NEXT_ITEM in queue._events)) {
-        emit(queue, queue.EVENT_NEXT_ITEM, [item]);
-    }
+    emit(queue, queue.EVENT_NEXT_ITEM, [item]);
 
     return !queue.isStarted;
 }
@@ -1230,10 +1223,6 @@ function onEndStackItem() {
     }
 }
 
-function getType(object) {
-    return toString.call(object).slice(8, -1);
-}
-
 function wrapIfArray(object) {
     return isArray(object) ? object : [object];
 }
@@ -1243,7 +1232,7 @@ function isFunction(object) {
 }
 
 function toError(value) {
-    return value != null && (getType(value) === 'Error' || value instanceof Error) ? value : new Error(value);
+    return value != null && (value instanceof Error) ? value : new Error(String(value));
 }
 
 function changeState(object, state, data) {
@@ -1253,11 +1242,9 @@ function changeState(object, state, data) {
     object.state = state;
 
     if (_events) {
-        if (state in _events) {
-            emit(object, state, data);
-        }
+        emit(object, state, data);
 
-        if ((object.EVENT_CHANGE_STATE in _events) && object.state === state) {
+        if (object.state === state) {
             emit(object, object.EVENT_CHANGE_STATE, [state]);
         }
     }
@@ -1299,41 +1286,49 @@ function toObject(item) {
 }
 
 function invoke(emitter, listener, context) {
-    if (isFunction(listener)) {
-        emitter.invoke(listener, emitter.stateData, context);
-    } else if (emitter && isFunction(emitter.emit)) {
-        emit(emitter, emitter.state, emitter.stateData);
-    } else {
-        throw new Error(EventEmitter.LISTENER_TYPE_ERROR);
+    if (listener) {
+        if (isFunction(listener)) {
+            return emitter.invoke(listener, emitter.stateData, context);
+        } else if (isFunction(listener.emit)) {
+            return emit(listener, emitter.state, emitter.stateData);
+        }
+    }
+
+    throw new Error(EventEmitter.LISTENER_TYPE_ERROR);
+}
+
+function _emit (emitter, type, data) {
+    try {
+        switch (data.length) {
+            case 0:
+                emitter.emit(type);
+                break;
+            case 1:
+                emitter.emit(type, data[0]);
+                break;
+            case 2:
+                emitter.emit(type, data[0], data[1]);
+                break;
+            case 3:
+                emitter.emit(type, data[0], data[1], data[2]);
+                break;
+            case 4:
+                emitter.emit(type, data[0], data[1], data[2], data[3]);
+                break;
+            case 5:
+                emitter.emit(type, data[0], data[1], data[2], data[3], data[4]);
+                break;
+            default:
+                emitter.emit.apply(type, data);
+        }
+    } catch (error) {
+        emitter.setState(emitter.STATE_ERROR, toError(error));
     }
 }
 
 function emit(emitter, type, data) {
-    try {
-        switch (data.length) {
-            case 0:
-                _emit.call(emitter, type);
-                break;
-            case 1:
-                _emit.call(emitter, type, data[0]);
-                break;
-            case 2:
-                _emit.call(emitter, type, data[0], data[1]);
-                break;
-            case 3:
-                _emit.call(emitter, type, data[0], data[1], data[2]);
-                break;
-            case 4:
-                _emit.call(emitter, type, data[0], data[1], data[2], data[3]);
-                break;
-            case 5:
-                _emit.call(emitter, type, data[0], data[1], data[2], data[3], data[4]);
-                break;
-            default:
-                _emit.apply(emitter, type, data);
-        }
-    } catch (error) {
-        emitter.setState(emitter.STATE_ERROR, toError(error));
+    if (emitter._events && (type in emitter._events)) {
+        _emit(emitter, type, data);
     }
 }
 
@@ -1379,7 +1374,7 @@ function create(constructor, sp) {
 function Prototype() {
 }
 
-var getKeys = isFunction(Object.keys) ? Object.keys : function (object) {
+var getKeys = isFunction(Object.keys) ? Object.keys : function keys (object) {
     var keys = [];
 
     for (var name in object) {
@@ -1392,5 +1387,5 @@ var getKeys = isFunction(Object.keys) ? Object.keys : function (object) {
 };
 
 var isArray = Array.isArray || function isArray(object) {
-        return object && (getType(object) === 'Array');
+        return object && (toString.call(object).slice(8, -1) === 'Array');
     };
