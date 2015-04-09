@@ -6,8 +6,6 @@ var or = new oldResponse();
 var r = new Response();
 var fnc = function () {};
 var response;
-var oQueue;
-var nQueue;
 var queue;
 
 var suits = [{
@@ -17,6 +15,23 @@ var suits = [{
     },
     New: function () {
         new Response().destroy();
+    }
+}, {
+    name: '#onResolve()',
+    fn: function () {
+        response.onResolve(r);
+    },
+    Old: {
+        onStart: function () {
+            r = new oldResponse().onResolve(fnc);
+            response = new oldResponse().resolve();
+        }
+    },
+    New: {
+        onStart: function () {
+            r = new Response().onResolve(fnc);
+            response = new Response().resolve();
+        }
     }
 }, {
     name: '#resolve()',
@@ -31,6 +46,21 @@ var suits = [{
     New: {
         onStart: function () {
             response = new Response().onState('resolve', fnc);
+        }
+    }
+}, {
+    name: '#reject()',
+    fn: function () {
+        response.reject().pending();
+    },
+    Old: {
+        onStart: function () {
+            response = new oldResponse().onState('reject', fnc);
+        }
+    },
+    New: {
+        onStart: function () {
+            response = new Response().onState('reject', fnc);
         }
     }
 }, {
@@ -49,18 +79,26 @@ var suits = [{
         }
     }
 }, {
+    name: 'new Queue().start()',
+    Old: function () {
+        new oldResponse.Queue([fnc, fnc, fnc], true);
+    },
+    New: function () {
+        new Response.Queue([fnc, fnc, fnc], true);
+    }
+}, {
     name: 'Queue#start()',
     fn: function () {
         queue.start().pending();
     },
     Old: {
         onStart: function () {
-            queue = new oldResponse.Queue([fnc, fnc, fnc]);
+            queue = new oldResponse.Queue([fnc, fnc, fnc]).onNextItem(fnc).onResolve(fnc);
         }
     },
     New: {
         onStart: function () {
-            queue = new Response.Queue([fnc, fnc, fnc]);
+            queue = new Response.Queue([fnc, fnc, fnc]).onNextItem(fnc).onResolve(fnc);
         }
     }
 }];
