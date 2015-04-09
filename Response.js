@@ -232,7 +232,7 @@ State.prototype.setState = function (state, stateData) {
  */
 State.prototype.onState = function (state, listener, context) {
     if (this.state === state) {
-        invoke(this, listener, context);
+        invokeListener(this, listener, context);
     }
 
     return this.on(state, listener, context);
@@ -256,7 +256,7 @@ State.prototype.onState = function (state, listener, context) {
  */
 State.prototype.onceState = function (state, listener, context) {
     if (this.state === state) {
-        invoke(this, listener, context);
+        invokeListener(this, listener, context);
     } else {
         this.once(state, listener, context);
     }
@@ -1285,7 +1285,7 @@ function toObject(item) {
     return (item && item.toObject) ? item.toObject() : item;
 }
 
-function invoke(emitter, listener, context) {
+function invokeListener(emitter, listener, context) {
     if (listener) {
         if (isFunction(listener)) {
             return emitter.invoke(listener, emitter.stateData, context);
@@ -1319,7 +1319,7 @@ function _emit (emitter, type, data) {
                 emitter.emit(type, data[0], data[1], data[2], data[3], data[4]);
                 break;
             default:
-                emitter.emit.apply(type, data);
+                emitter.emit.apply(emitter, [type].concat(data));
         }
     } catch (error) {
         emitter.setState(emitter.STATE_ERROR, toError(error));
