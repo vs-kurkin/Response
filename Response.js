@@ -861,8 +861,8 @@ Response.prototype.getResult = function (key) {
     }
 
     switch (typeof key) {
-        case 'String':
-        case 'Number':
+        case 'string':
+        case 'number':
             return toObject(this.getByKey(key));
             break;
         default:
