@@ -1334,6 +1334,7 @@ function emit(emitter, type, data) {
 
 function create(constructor, sp) {
     var proto;
+    var name;
 
     if (Object.create) {
         proto = Object.create(this.prototype, constructor ? {
@@ -1352,7 +1353,7 @@ function create(constructor, sp) {
 
     if (constructor) {
         if (sp === true) {
-            for (var name in this) {
+            for (name in this) {
                 if (this.hasOwnProperty(name)) {
                     constructor[name] = this[name];
                 }
