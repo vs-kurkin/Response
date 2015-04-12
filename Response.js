@@ -31,7 +31,7 @@ function State(state) {
  * @static
  */
 State.isState = function (object) {
-    return object != null && ((object instanceof State) || object.isState);
+    return object != null && (object.isState || (object instanceof State));
 };
 
 /**
@@ -437,7 +437,7 @@ Response.Queue = Queue;
  * @returns {Boolean}
  */
 Response.isResponse = function (object) {
-    return object != null && ((object instanceof Response) || object.isResponse);
+    return object != null && (object.isResponse || (object instanceof Response));
 };
 
 /**
@@ -913,7 +913,7 @@ Queue.create = create;
  * @returns {Boolean}
  */
 Queue.isQueue = function (object) {
-    return object != null && ((object instanceof Queue) || object.isQueue);
+    return object != null && (object.isQueue || (object instanceof Queue));
 };
 
 Queue.prototype = Response.create(Queue);
