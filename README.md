@@ -3,18 +3,18 @@ Response [![Build Status](https://travis-ci.org/B-Vladi/Response.svg?branch=mast
 The extensible event-driven stateful interface.
 
  * State(state)
+   * `.EVENT_CHANGE_STATE`
+   * `.STATE_ERROR`
    * `.isState`
    * `.create`
-   * `#EVENT_CHANGE_STATE`
-   * `#STATE_ERROR`
+   
    * `#isState`
    * `#state`
    * `#keys`
    * `#data`
    * `#stateData`
    * `#invoke(method, args, context)`
-   * `#destroy()`
-   * `#destroyStateData()`
+   * `#destroy(recursive)`
    * `#is(state)`
    * `#setState(state, data)`
    * `#onState(state, listener, context)`
@@ -23,11 +23,15 @@ The extensible event-driven stateful interface.
    * `#offChangeState(listener)`
    * `#setData(key, value)`
    * `#getData(key)`
-   * `#toObject(keys)`
    * `#getStateData(key)`
+   * `#toObject(keys)`
    * `#toJSON()`
 
  * Response(parent)
+   * `.STATE_PENDING`
+   * `.STATE_RESOLVED`
+   * `.STATE_REJECTED`
+   * `.EVENT_PROGRESS`
    * `.State(state)`
    * `.Queue(stack, start)`
    * `.isResponse(object)`
@@ -35,11 +39,8 @@ The extensible event-driven stateful interface.
    * `.resolve(results)`
    * `.reject(reason)`
    * `.nodeCallback(error, result)`
+   
    * `#State(state)`
-   * `#STATE_PENDING`
-   * `#STATE_RESOLVED`
-   * `#STATE_REJECTED`
-   * `#EVENT_PROGRESS`
    * `#isResponse`
    * `#pending()`
    * `#resolve(results)`
@@ -59,12 +60,13 @@ The extensible event-driven stateful interface.
    * `#getReason()`
    
  * Queue(stack, start)
+   * `.EVENT_START`
+   * `.EVENT_STOP`
+   * `.EVENT_NEXT_ITEM`
    * `.create(constructor, copyStatic)`
    * `.isQueue(object)`
-   * `#Response(parent)`
-   * `#EVENT_START`
-   * `#EVENT_STOP`
-   * `#EVENT_NEXT_ITEM`
+   * `.Response(parent)`
+   
    * `#isQueue`
    * `#isStrict`
    * `#isStarted`
@@ -72,8 +74,6 @@ The extensible event-driven stateful interface.
    * `#start()`
    * `#stop()`
    * `#push()`
-   * `#getResults()`
-   * `#getReasons()`
    * `#strict(flag)`
    * `#onStart(listener, context)`
    * `#onStop(listener, context)`
