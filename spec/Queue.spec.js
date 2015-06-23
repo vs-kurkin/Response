@@ -14,10 +14,14 @@ describe('Queue:', function () {
         expect(queue.isStrict).toBeFalsy();
         expect(queue.isStarted).toBeFalsy();
         expect(queue.isQueue).toBeTruthy();
+    }
 
-        expect(queue.EVENT_START).toBe('start');
-        expect(queue.EVENT_STOP).toBe('stop');
-        expect(queue.EVENT_NEXT_ITEM).toBe('nextItem');
+    function checkQueue(state, stateData, stack, item, isStarted) {
+        expect(queue.state).toBe(state);
+        expect(queue.stateData).toEqual(stateData);
+        expect(queue.stack).toEqual(stack);
+        expect(queue.item).toBe(item);
+        expect(queue.isStarted).toBe(isStarted);
     }
 
     function checkInherit() {
@@ -44,7 +48,10 @@ describe('Queue:', function () {
 
     it('check exports', function () {
         expect(typeof Queue).toBe('function');
-        expect(typeof Response.queue).toBe('function');
+
+        expect(Queue.EVENT_START).toBe('start');
+        expect(Queue.EVENT_STOP).toBe('stop');
+        expect(Queue.EVENT_NEXT_ITEM).toBe('nextItem');
     });
 
     it('check constructor: prototype', checkPrototype);
@@ -154,13 +161,240 @@ describe('Queue:', function () {
         expect(queue === Queue.prototype).toBeFalsy();
     });
 
-    it('create queue via static method', function () {
-        queue = Response.queue(1, {}, listener);
+    describe('stack', function () {
+        it('result of the queue must match stack', function () {
+            expect(new Queue([1, function () {
+                return 2;
+            }, {}], true).stateData).toEqual([1, 2, {}]);
+        });
 
-        expect(Queue.isQueue(queue)).toBeTruthy();
-        expect(queue.stack).toEqual([1, {}, listener]);
-        expect(queue.state).toBe('pending');
+        it('the execution order must match the stack', function () {
+            var callStack = [];
+
+            function i1() {
+                callStack.push(1);
+            }
+
+            function i2() {
+                callStack.push(2);
+            }
+
+            function i3() {
+                callStack.push(3);
+            }
+
+            new Queue([i1, i2, i3], true);
+
+            expect(callStack).toEqual([1, 2, 3]);
+        });
+
+        it('queue should be wait if function returned pending response object', function () {
+            var r = new Response();
+            queue = new Queue([function () {
+                return r;
+            }], true);
+
+            expect(queue.state).toBe('pending');
+
+            r.resolve();
+
+            expect(queue.state).toBe('resolve');
+        });
+
+        it('queue should not be rejected if a function has thrown an exception', function () {
+            queue = new Queue([function () {
+                throw 'error';
+            }])
+                .start();
+
+            checkQueue('resolve', [new Error('error')], [], null, false);
+        });
+
+        it('strict queue should be rejected if a function has thrown an exception', function () {
+            queue = new Queue([function () {
+                throw 'error';
+            }, listener])
+                .strict()
+                .start();
+
+            checkQueue('error', [new Error('error')], [], null, false);
+            expect(listener).not.toHaveBeenCalled();
+        });
+
+        it('check items as response', function () {
+            var r1 = new Response();
+            var r2 = new Response();
+            var r3 = new Response().resolve();
+
+            queue = new Queue([r1, r2, r3], true);
+
+            checkQueue('pending', [r1], [r2, r3], r1, true);
+
+            r1.resolve();
+
+            checkQueue('pending', [r1, r2], [r3], r2, true);
+
+            r2.resolve();
+
+            checkQueue('resolve', [r1, r2, r3], [], null, false);
+        });
+
+        it('strict queue should be rejected if item is rejected', function () {
+            queue = new Queue([new Response().reject('error')])
+                .on('error', listener)
+                .on('stop', listener)
+                .strict()
+                .start();
+
+            checkQueue('error', [new Error('error')], [], null, false);
+            expect(listener.calls.count()).toBe(2);
+        });
+
+        it('push in stack', function () {
+            queue = new Queue([0]).push(1);
+
+            expect(queue.stack).toEqual([0, 1]);
+
+            queue.start();
+
+            expect(queue.stateData).toEqual([0, 1]);
+        });
+
+        it('push in stack with key', function () {
+            var i0 = 0;
+            var i1 = 1;
+            var i2 = function name() {
+            };
+            var i3 = {name: 'name'};
+
+            queue = new Queue([i0])
+                .push(i1, '1')
+                .push(i2)
+                .push(i2, 'value')
+                .push(i3)
+                .push(i3, 'value');
+
+            expect(queue.keys).toEqual([undefined, '1', 'name', 'value', 'name', 'value']);
+            expect(queue.stack).toEqual([i0, i1, i2, i2, i3, i3]);
+        });
+
+        it('dynamic push in stack', function () {
+            queue = new Queue([function () {
+                this.push(listener);
+
+                expect(this.stack).toEqual([listener]);
+            }], true);
+
+            expect(listener.calls.count()).toBe(1);
+        });
+    });
+
+    it('set strict', function () {
         expect(queue.isStrict).toBeFalsy();
+        expect(queue.strict()).toBe(queue);
+        expect(queue.isStrict).toBeTruthy();
+        expect(queue.strict(false).isStrict).toBeFalsy();
+        expect(queue.strict(true)).toBeTruthy();
+    });
+
+    describe('subscribe', function () {
+        var ctx = {};
+
+        it('on "start" event', function () {
+            expect(queue.onStart(listener)).toBe(queue);
+
+            queue.start();
+
+            expect(listener.calls.mostRecent().object).toBe(queue);
+        });
+
+        it('on "start" event (custom context)', function () {
+            queue.onStart(listener, ctx).start();
+
+            expect(listener.calls.mostRecent().object).toBe(ctx);
+        });
+
+        it('on "stop" event', function () {
+            expect(queue.onStop(listener)).toBe(queue);
+
+            queue.start();
+
+            expect(listener.calls.mostRecent().object).toBe(queue);
+        });
+
+        it('on "stop" event (custom context)', function () {
+            queue.onStop(listener, ctx).start();
+
+            expect(listener.calls.mostRecent().object).toBe(ctx);
+        });
+
+        it('on "nextItem" event (mould not be called if stack is empty)', function () {
+            expect(queue.onNextItem(listener)).toBe(queue);
+
+            queue.start();
+
+            expect(listener.calls.count()).toBe(0);
+        });
+
+        it('on "nextItem" event should be called with current item in argument', function () {
+            queue
+                .push(1)
+                .onNextItem(function (item) {
+                    expect(item).toBe(this.item);
+                })
+                .start();
+        });
+
+        it('event "nextItem" should be called on every item', function () {
+            queue
+                .push(1)
+                .push(2)
+                .push(3)
+                .onNextItem(listener)
+                .start();
+
+            expect(listener.calls.count()).toBe(3);
+        });
+
+        it('on "nextItem" event (custom context)', function () {
+            queue
+                .push(1)
+                .onNextItem(listener, ctx)
+                .start();
+
+            expect(listener.calls.mostRecent().object).toBe(ctx);
+        });
+    });
+
+    describe('destroy', function () {
+        it('should destroyed items in stack and in results', function () {
+            var resp0 = new Response();
+            var resp1 = new Response().resolve(resp0);
+            var resp2 = new Response().resolve();
+            var property;
+
+            new Queue([resp1, function () {
+                this.destroy(true);
+
+                for (property in resp0) {
+                    if (resp0.hasOwnProperty(property)) {
+                        expect(resp0[property]).toBeUndefined();
+                    }
+                }
+
+                for (property in resp1) {
+                    if (resp1.hasOwnProperty(property)) {
+                        expect(resp1[property]).toBeUndefined();
+                    }
+                }
+
+                for (property in resp2) {
+                    if (resp2.hasOwnProperty(property)) {
+                        expect(resp2[property]).toBeUndefined();
+                    }
+                }
+            }, resp2], true);
+        });
     });
 
     describe('start queue', function () {
@@ -237,29 +471,7 @@ describe('Queue:', function () {
                 expect(listener.calls.count()).toBe(1);
             });
 
-            it('start queue after stopping', function () {
-                var stack = [function () {
-                    this.stop();
-                    return 1;
-                }, listener];
-
-                queue = new Queue(stack, true);
-
-                expect(listener).not.toHaveBeenCalled();
-                expect(queue.isStarted).toBe(false);
-                expect(queue.item).toBe(1);
-                expect(queue.stateData).toEqual([]);
-                expect(queue.stack).toEqual(stack);
-                expect(queue.state).toBe('pending');
-
-                queue.start();
-
-                expect(listener.calls.count()).toBe(1);
-                expect(queue.stateData).toEqual([1, undefined]);
-                expect(queue.state).toBe('resolve');
-            });
-
-            it('start listener should be called without arguments and  with of queue context', function () {
+            it('start listener should be called without arguments and with of queue context', function () {
                 queue
                     .on('start', listener)
                     .start();
@@ -269,300 +481,139 @@ describe('Queue:', function () {
             });
         });
 
-        describe('stop queue', function () {
-            it('check returns value', function () {
-                expect(queue.stop()).toBe(queue);
-            });
-
-            it('in stack item', function () {
-                new Queue([function () {
-                    this.stop();
-                }, listener], true);
-
-                expect(listener).not.toHaveBeenCalled();
-            });
-
-            it('in "start" event listener', function () {
-                queue = new Queue([listener])
-                    .on('start', function () {
-                        this.stop();
-                    })
-                    .start();
-
-                expect(listener).not.toHaveBeenCalled();
-                expect(queue.isStarted).toBe(false);
-                expect(queue.item).toBe(null);
-                expect(queue.stateData).toEqual([]);
-                expect(queue.stack).toEqual([listener]);
-                expect(queue.state).toBe('pending');
-            });
-
-            it('in "nextItem" event listener', function () {
-                queue = new Queue([1, 2])
-                    .on('stop', listener)
-                    .on('nextItem', function () {
-                        this.stop();
-                    })
-                    .start();
-
-                expect(listener).toHaveBeenCalled();
-                expect(queue.isStarted).toBe(false);
-                expect(queue.item).toBe(1);
-                expect(queue.stateData).toEqual([]);
-                expect(queue.stack).toEqual([1, 2]);
-                expect(queue.state).toBe('pending');
-            });
-
-            it('queue should not emit "stop" event, if it is  stopped', function () {
-                queue
-                    .onStop(listener)
-                    .stop();
-
-                expect(listener).not.toHaveBeenCalled();
-            });
-
-            it('queue should be stopped on resolve or reject', function () {
-                new Queue([function () {
-                    this.resolve();
-                }, 2])
-                    .on('stop', listener)
-                    .start();
-
-                expect(listener).toHaveBeenCalled();
-                expect(queue.stateData).toEqual([]);
-                expect(queue.stack).toEqual([]);
-                expect(queue.item).toBeNull();
-            });
-        });
-
-        describe('stack', function () {
-            it('result of the queue must match stack', function () {
-                expect(new Queue([1, function () {
-                    return 2;
-                }, {}], true).stateData).toEqual([1, 2, {}]);
-            });
-
-            it('argument of function should be last element of stack or result of response or null', function () {
-                var r = new Response().resolve(2);
-
-                queue = new Queue([function (i) {
-                    expect(i).toBeNull();
-                    return 1;
-                }, function (i) {
-                    expect(i).toBe(1);
-                }, r, function (i) {
-                    expect(i).toBe(2);
-                }], true);
-            });
-
-            it('the execution order must match the stack', function () {
-                var callStack = [];
-
-                function i1(i) {
-                    callStack.push(1);
-                }
-
-                function i2(i) {
-                    callStack.push(2);
-                }
-
-                function i3(i) {
-                    callStack.push(3);
-                }
-
-                new Queue([i1, i2, i3], true);
-
-                expect(callStack).toEqual([1, 2, 3]);
-            });
-
-            it('queue should be wait if function returned pending response object', function () {
+        describe('after stopping', function () {
+            it('in task, response was resolved', function () {
                 var r = new Response();
-                queue = new Queue([function () {
-                    return r;
-                }], true);
 
-                expect(queue.state).toBe('pending');
+                queue = new Queue([function () {
+                    this.stop();
+                    return r;
+                }])
+                    .start();
 
                 r.resolve();
 
-                expect(queue.state).toBe('resolve');
+                checkQueue('pending', [r], [], r, false);
+
+                queue.start();
+
+                checkQueue('resolve', [r], [], null, false);
             });
 
-            it('queue should not be rejected if a function has thrown an exception', function () {
-                queue = new Queue([function () {
-                    throw 'error';
-                }], true);
-
-                expect(queue.state).toBe('resolve');
-                expect(queue.stateData).toEqual([new Error('error')]);
-            });
-
-            it('strict queue should be rejected if a function has thrown an exception', function () {
-                queue = new Queue([function () {
-                    throw 'error';
-                }, listener])
-                    .strict()
-                    .start();
-
-                expect(queue.state).toBe('error');
-                expect(queue.stateData).toEqual([new Error('error')]);
-                expect(listener).not.toHaveBeenCalled();
-            });
-
-            it('check items as response', function () {
-                var r1 = new Response();
-                var r2 = new Response();
-                var r3 = new Response().resolve();
-
-                queue = new Queue([r1, r2, r3], true);
-
-                expect(queue.stack).toEqual([r1, r2, r3]);
-                expect(queue.stateData).toEqual([]);
-                expect(queue.item).toBe(r1);
-                expect(queue.state).toBe('pending');
-
-                r1.resolve();
-
-                expect(queue.stack).toEqual([r2, r3]);
-                expect(queue.stateData).toEqual([r1]);
-                expect(queue.item).toBe(r2);
-                expect(queue.state).toBe('pending');
-
-                r2.resolve();
-
-                expect(queue.stack).toEqual([]);
-                expect(queue.stateData).toEqual([r1, r2, r3]);
-                expect(queue.item).toBeNull();
-                expect(queue.state).toBe('resolve');
-            });
-
-            it('strict queue should be rejected if item is rejected', function () {
-                var r = new Response().reject('error');
+            it('and response was resolved', function () {
+                var r = new Response();
 
                 queue = new Queue([r])
-                    .on('error', listener)
-                    .on('stop', listener)
-                    .strict()
-                    .start();
+                    .start()
+                    .stop();
 
-                expect(queue.state).toBe('error');
-                expect(queue.stateData).toEqual([new Error('error')]);
-                expect(queue.item).toBe(r);
-                expect(listener.calls.count()).toBe(2);
-            });
-
-            it('push in stack', function () {
-                queue = new Queue([0]).push(1, null, {});
-
-                expect(queue.stack).toEqual([0, 1, null, {}]);
+                r.resolve();
 
                 queue.start();
 
-                expect(queue.stateData).toEqual([0, 1, null, {}]);
+                checkQueue('resolve', [r], [], null, false);
             });
 
-            it('dynamic push in stack', function () {
-                queue = new Queue([function () {
-                    this.push(listener);
-                }], true);
+            it('and response was pending', function () {
+                var r = new Response();
 
-                expect(listener.calls.count()).toBe(1);
+                queue = new Queue([r])
+                    .start()
+                    .stop()
+                    .start();
+
+                r.resolve();
+
+                checkQueue('resolve', [r], [], null, false);
             });
         });
+    });
 
-        it('set strict', function () {
-            expect(queue.isStrict).toBeFalsy();
-            expect(queue.strict()).toBe(queue);
-            expect(queue.isStrict).toBeTruthy();
-            expect(queue.strict(false).isStrict).toBeFalsy();
-            expect(queue.strict(true)).toBeTruthy();
+    describe('stop queue', function () {
+        it('check returns value', function () {
+            expect(queue.stop()).toBe(queue);
         });
 
-        describe('subscribe', function () {
-            var ctx = {};
+        it('in stack item', function () {
+            queue = new Queue([function () {
+                this.stop();
+                return 1;
+            }, listener])
+                .start();
 
-            it('on "start" event', function () {
-                expect(queue.onStart(listener)).toBe(queue);
+            checkQueue('pending', [1], [listener], 1, false);
+            expect(listener).not.toHaveBeenCalled();
 
-                queue.start();
+            queue.start();
 
-                expect(listener.calls.mostRecent().object).toBe(queue);
-            });
-
-            it('on "start" event (custom context)', function () {
-                queue.onStart(listener, ctx).start();
-
-                expect(listener.calls.mostRecent().object).toBe(ctx);
-            });
-
-            it('on "stop" event', function () {
-                expect(queue.onStop(listener)).toBe(queue);
-
-                queue.start();
-
-                expect(listener.calls.mostRecent().object).toBe(queue);
-            });
-
-            it('on "stop" event (custom context)', function () {
-                queue.onStop(listener, ctx).start();
-
-                expect(listener.calls.mostRecent().object).toBe(ctx);
-            });
-
-            it('on "nextItem" event (mould not be called if stack is empty)', function () {
-                expect(queue.onNextItem(listener)).toBe(queue);
-
-                queue.start();
-
-                expect(listener.calls.count()).toBe(0);
-            });
-
-            it('on "nextItem" event should be called with current item in argument', function () {
-                queue
-                    .push(1)
-                    .onNextItem(function (item) {
-                        expect(item).toBe(this.item);
-                    })
-                    .start();
-            });
-
-            it('event "nextItem" should be called on every item', function () {
-                queue
-                    .push(1, 2, 3)
-                    .onNextItem(listener)
-                    .start();
-
-                expect(listener.calls.count()).toBe(3);
-            });
-
-            it('on "nextItem" event (custom context)', function () {
-                queue
-                    .push(1)
-                    .onNextItem(listener, ctx)
-                    .start();
-
-                expect(listener.calls.mostRecent().object).toBe(ctx);
-            });
+            checkQueue('resolve', [1, undefined], [], null, false);
+            expect(listener).toHaveBeenCalled();
         });
 
-        it('destroy items', function () {
-            var resp1 = new Response().resolve();
-            var resp2 = new Response().resolve();
-            var property;
+        it('in "start" event listener', function () {
+            queue = new Queue([listener])
+                .on('start', function () {
+                    this.stop();
+                })
+                .start();
 
-            new Queue([resp1, resp2], true).destroyItems();
+            checkQueue('pending', [], [listener], null, false);
+            expect(listener).not.toHaveBeenCalled();
 
-            for (property in resp1) {
-                if (resp1.hasOwnProperty(property)) {
-                    expect(resp1[property]).toBeNull();
-                }
-            }
+            queue.start();
 
-            for (property in resp2) {
-                if (resp2.hasOwnProperty(property)) {
-                    expect(resp2[property]).toBeNull();
-                }
-            }
+            checkQueue('pending', [], [listener], null, false);
+            expect(listener).not.toHaveBeenCalled();
+        });
+
+        it('in "nextItem" event listener', function () {
+            queue = new Queue([1, 2])
+                .on('stop', listener)
+                .on('nextItem', function () {
+                    this.stop();
+                })
+                .start();
+
+            checkQueue('pending', [1], [2], 1, false);
+
+            queue.start();
+
+            checkQueue('pending', [1, 2], [], 2, false);
+
+            queue.start();
+
+            checkQueue('resolve', [1, 2], [], null, false);
+            expect(listener.calls.count()).toBe(3);
+        });
+
+        it('should not emit "stop" event, if it is stopped', function () {
+            queue
+                .onStop(listener)
+                .stop();
+
+            expect(listener).not.toHaveBeenCalled();
+        });
+
+        it('should be stopped on resolve in task', function () {
+            queue = new Queue([function () {
+                this.resolve();
+            }, 2])
+                .on('stop', listener)
+                .start();
+
+            checkQueue('resolve', [], [], null, false);
+            expect(listener).toHaveBeenCalled();
+        });
+
+        it('should be stopped on reject in task', function () {
+            queue = new Queue([function () {
+                this.reject('error');
+            }, 2])
+                .on('stop', listener)
+                .start();
+
+            checkQueue('error', [new Error('error')], [], null, false);
+            expect(listener).toHaveBeenCalled();
         });
     });
 });
