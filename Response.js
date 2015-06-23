@@ -799,18 +799,20 @@ Response.prototype.onProgress = function (listener, context) {
 
 /**
  *
- * @param {Response} parent
+ * @param {Response|Deferred} object
  * @throws {Error} Бросает исключение, если parent равен this.
  * @returns {Response}
  * @this {Response}
  */
-Response.prototype.notify = function (parent) {
-    if (parent) {
-        if (parent === this) {
+Response.prototype.notify = function (object) {
+    if (object) {
+        if (object === this) {
             throw new Error('Can\'t notify itself');
         }
 
-        this.then(parent.resolve, parent.reject, parent.progress, parent);
+        var onProgress = Response.isResponse(object) ? object.progress : object.notify;
+
+        this.then(object.resolve, object.reject, onProgress, object);
     }
 
     return this;
