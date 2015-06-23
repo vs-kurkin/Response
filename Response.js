@@ -897,6 +897,20 @@ Response.prototype.fork = function () {
 
 /**
  *
+ * @param {Function} listener
+ * @param {*} [context=this]
+ * @returns {Response}
+ */
+Response.prototype.map = function (listener, context) {
+    return this.onResolve(onMap, {
+        response: this,
+        listener: listener,
+        context: context
+    });
+};
+
+/**
+ *
  * @example
  * var r = new Response()
  *   .resolve(3) // resolve one result
@@ -1451,6 +1465,15 @@ function onAny() {
     this.response.off(this.response.isResolved() ? STATE_REJECTED : STATE_RESOLVED, onAny);
 
     invokeListener(this.response, this.listener, this.context);
+}
+
+/**
+ *
+ */
+function onMap () {
+    var response = this.response;
+
+    response.resolve(response.invoke(this.listener, response.stateData, this.context));
 }
 
 /**
