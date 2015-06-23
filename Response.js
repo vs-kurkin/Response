@@ -6,6 +6,9 @@
 var EventEmitter = require('EventEmitter');
 var toString = Object.prototype.toString;
 
+/**
+ * Constants
+ */
 var EVENT_CHANGE_STATE = 'changeState';
 var STATE_ERROR = 'error';
 
@@ -82,11 +85,12 @@ var bind = isFunction(Function.prototype.bind) ? function (callback, context) {
 };
 
 /**
- *
- * @param {*} [state] Начальное состояние объекта.
+ * Конструктор объекта "Состояние".
+ * @param {*} [state=null] Значение начального состояние объекта.
  * @returns {State}
  * @constructor
  * @extends {EventEmitter}
+ * @see https://ru.wikipedia.org/wiki/Состояние_(шаблон_проектирования)
  */
 function State(state) {
     EventEmitter.call(this);
@@ -101,6 +105,7 @@ function State(state) {
 
 /**
  * Событие изменения состояния.
+ * В обработчики события передается единственный аргумент - новое значение состояния.
  * @const
  * @default 'changeState'
  * @type {String}
@@ -108,17 +113,20 @@ function State(state) {
 State.EVENT_CHANGE_STATE = EVENT_CHANGE_STATE;
 
 /**
- * Событие изменения состояния.
+ * Встроенное состояние ошибки.
+ * Объект {@link State} автоматически переходит в состояние 'error' в случаях, когда функция,
+ * вызываемая методами {@link State.invoke} и {@link State#invoke}, выбросила исключение,
+ * либо обработчик события (или состояния) выбросил исключение.
  * @const
- * @default 'changeState'
+ * @default 'error'
  * @type {String}
  */
 State.STATE_ERROR = STATE_ERROR;
 
 /**
- * Проверяет, я вляется ли объект экземпляром конструктора {@link State}.
+ * Проверяет, я вляется ли объект экземпляром конструктора {@link State}, либо наследует от него.
  * @param {Object} [object] Проверяемый объект.
- * @returns {Boolean}
+ * @returns {Boolean} Результат проверки.
  * @static
  */
 State.isState = function (object) {
@@ -126,15 +134,21 @@ State.isState = function (object) {
 };
 
 /**
- * Создает объект, который наследует от объекта {@link State}.
- * @param {Function} [constructor]
- * @param {Boolean} [copyStatic=false]
+ * Создает объект, который наследует от объекта {@link State.prototype}.
+ * Метод может использоваться как для создания
+ * Если метод используется для создания наследования (передан конструктор), будут выполнены следующие действия:
+ *  - в созданный объект будут скопированы свойства из this.prototype
+ *  - в созданном объекте будет создано свойство constructor с ссылкой на переданый конструктор
+ *  - созданный объект будет сохранен в свойстве constructor.prototype
+ * Создание объекта происходит без вызова конструктора.
+ * @param {Function} [constructor] Конструктор, экземпляры которого должны наследовать от созданного объекта.
+ * @param {Boolean} [copyStatic=false] Флаг, указывающий на необходимость копирования собственных свойст из текущего контекста в объект constructor.
  * @static
- * @returns {Object}
+ * @returns {Object} Созданный объект.
  * @example
  * function Const () {}
  *
- * Const.prototype = State.create(Const);
+ * State.create(Const);
  *
  * new Const() instanceof State; // true
  * Const.prototype.constructor === Const; // true
@@ -148,12 +162,12 @@ State.create = function (constructor, copyStatic) {
 };
 
 /**
- *
+ * Статический аналог метода {@link State#invoke}.
  * @static
- * @param {Function} fnc
- * @param {Array} [args]
- * @param {Object} [context]
- * @returns {State}
+ * @param {Function} fnc Функция, которая будет выполнена методом {@link State#invoke} в контексте созданного объекта.
+ * @param {Array} [args] Аргументы, с которыми будет выполнена функция.
+ * @param {Object} [context={State}] Контекст выполнения функции.
+ * @returns {State} Созданный объект {@link State}, в контексте которого вызывается {@link State#invoke}.
  */
 State.invoke = function (fnc, args, context) {
     var state = new this();
@@ -166,6 +180,7 @@ State.invoke = function (fnc, args, context) {
 State.prototype = State.create.call(EventEmitter, State);
 
 /**
+ * Свойство, указывающее на то, что объект наследует от {@link State}.
  * @type {Boolean}
  * @const
  * @default true
@@ -175,27 +190,27 @@ State.prototype.isState = true;
 /**
  * Текущее состояние объекта.
  * @readonly
- * @type {String}
+ * @type {String|*}
  * @default null
  */
 State.prototype.state = null;
 
 /**
- *
+ * Ключи для данных состояния {@link State#stateData}.
  * @type {Array}
  * @default []
  */
 State.prototype.keys = null;
 
 /**
- *
+ * Пространство имен для пользовательских данных.
  * @type {Object}
  * @default {}
  */
 State.prototype.data = null;
 
 /**
- * Данные для обработчиков стостояния.
+ * Данные стостояния. Элементы массива передаются аргументами в обработчики состояния.
  * @readonly
  * @type {Array}
  * @default []
@@ -203,11 +218,12 @@ State.prototype.data = null;
 State.prototype.stateData = null;
 
 /**
- *
- * @param {Function} fnc
- * @param {Array} [args]
- * @param {*} [context=this]
- * @returns {*}
+ * Безопасный вызов функции.
+ * Если функция выбросит исключение, объект {@link State} перейдет в состояние {@link State.STATE_ERROR}.
+ * @param {Function} fnc Выполняемая функция.
+ * @param {Array} [args=[]] Аргументы функции.
+ * @param {*} [context=this] Контекст выполнения функции.
+ * @returns {*|Error} Результат, который вернет выполняемая функция, либо объект ошибки, если функция выбросила исключение.
  */
 State.prototype.invoke = function (fnc, args, context) {
     var _args = isArray(args) ? args : [];
@@ -250,7 +266,9 @@ State.prototype.invoke = function (fnc, args, context) {
 
 /**
  * Обнуляет все собственные свойства объекта.
- * @param {Boolean} [recursive=false]
+ * @param {Boolean} [recursive=false] Если флаг был установлен в true, для всех объектов {@link State},
+ *                                    находящихся в {@link State#stateData}, будет вызван метод {@link State#destroy} c
+ *                                    аргументом recursive, равным true.
  * @returns {State}
  */
 State.prototype.destroy = function (recursive) {
@@ -273,13 +291,12 @@ State.prototype.is = function (state) {
 };
 
 /**
- * Изменяет состояние объекта.
- * После изменения состояния, первым будет вызвано событие с именем, соответствуюшим новому значению состояния.
- * Затем событие {@link State.EVENT_CHANGE_STATE}.
- * Если новое состояние не передано или объект уже находится в указаном состоянии, события не будут вызваны.
+ * Изменяет состояние объекта (если объект находится в другом состоянии) с заменой данных состояния.
+ * После изменения состояния, первым будет вызвано событие с именем, равным новому значению состояния.
+ * Если в итоге состояние было изменено, будет вызвано событие {@link State.EVENT_CHANGE_STATE}.
+ * Если объект уже находится в указаном состоянии, события не будут вызваны.
  * @param {*} state Новое сотояние объекта.
- * @param {Array|*} [data] Данные, которые будут переданы аргументом в обработчики нового состояния.
- *                         Если был передан массив, аргументами для обработчиков будут его элементы.
+ * @param {Array|*} [data] Новые данные состояния.
  * @returns {State}
  * @example
  * new State()
@@ -388,8 +405,8 @@ State.prototype.onChangeState = function (listener, context) {
 };
 
 /**
- * Отменяет обработку изменения состояния.
- * @param {Function|EventEmitter} [listener] Обработчик, который необходимо отменить.
+ * Удаляет обработчик изменения состояния.
+ * @param {Function|EventEmitter} [listener] Обработчик, который необходимо удалить.
  *                                           Если обработчик не был передан, будут отменены все обработчики.
  * @returns {State}
  */
@@ -404,9 +421,9 @@ State.prototype.offChangeState = function (listener) {
 };
 
 /**
- *
- * @param {String} key
- * @param {*} [value]
+ * Устанавливает пользовательские данные в пространство имен {@link State#data}.
+ * @param {String} key Ключ, по которому будут доступны данные.
+ * @param {*} [value] Пользовательские данные.
  * @returns {State}
  */
 State.prototype.setData = function (key, value) {
@@ -416,8 +433,9 @@ State.prototype.setData = function (key, value) {
 };
 
 /**
- *
- * @param {String} [key]
+ * Возвращает пользовательские данные из пространства имен {@link State#data} по ключу key,
+ * либо все данные, если ключ не был передан.
+ * @param {String} [key] Ключ пользовательских данных.
  * @returns {*}
  */
 State.prototype.getData = function (key) {
@@ -425,9 +443,9 @@ State.prototype.getData = function (key) {
 };
 
 /**
- *
- * @param {*} key
- * @returns {*|undefined}
+ * Возвращает данные состояния, соответствующие ключу key.
+ * @param {*} key Ключ данных состояния, указаный в {@link State#keys}.
+ * @returns {*|undefined} Данные состояния, либо undefined, если данные с таким ключем отсутствуют.
  */
 State.prototype.getStateData = function (key) {
     var index = this.keys.length;
@@ -440,8 +458,13 @@ State.prototype.getStateData = function (key) {
 };
 
 /**
- * @param {Array} [keys=this.keys]
- * @returns {Object}
+ * Трансформирует объект в хеш данных текущего состояния.
+ * Имена свойств результирующего объекта передаются массивом keys, либо берутся из {@link State#keys}.
+ * Значениями свойств являются данные из {@link State#stateData}.
+ * Если ключи отсутствуют, метод вернет пустой объект.
+ * @param {Array} [keys=this.keys] Ключи для создаваемого объекта.
+ *                                  Порядок ключей должен соответствовать порядку данных в {@link State#stateData}.
+ * @returns {Object} Результат трансформации.
  */
 State.prototype.toObject = function (keys) {
     var _keys = isArray(keys) ? keys : this.keys;
@@ -469,7 +492,7 @@ State.prototype.toObject = function (keys) {
 };
 
 /**
- *
+ * Трансформирует объект в JSON-объект с использованием метода {@link State#toObject}.
  * @returns {Object}
  */
 State.prototype.toJSON = function () {
@@ -477,8 +500,8 @@ State.prototype.toJSON = function () {
 };
 
 /**
- *
- * @param {Array} [keys=[]]
+ * Устанавливает новые ключи для данных состояния.
+ * @param {String[]} [keys=[]] Массив ключей.
  * @returns {State}
  */
 State.prototype.setKeys = function (keys) {
@@ -489,7 +512,7 @@ State.prototype.setKeys = function (keys) {
 
 /**
  *
- * @param {Response} [parent]
+ * @param {Response|Promise} [parent]
  * @constructor
  * @requires EventEmitter
  * @extends {State}
@@ -877,7 +900,7 @@ Response.prototype.done = function () {
  *   .setKeys(['foo', 'bar']) // sets a default keys
  *   .getResult('bar') // 2, returns result on a default key
  *
- * @param {String|Number} [key]
+ * @param {String|Number|String[]} [key]
  * @returns {*}
  * @throws {Error}
  */
@@ -911,7 +934,7 @@ Response.prototype.getReason = function () {
 
 /**
  *
- * @param {Array} [stack=[]]
+ * @param {Response[]|Promise[]|Function[]|*[]} [stack=[]]
  * @param {Boolean} [start=false]
  * @constructor
  * @extends {Response}
