@@ -611,28 +611,6 @@ Response.reject = function (reason) {
     return response;
 };
 
-/**
- *
- * @param {Error|*} [error]
- * @param {...*} [results]
- */
-Response.nodeCallback = function responseNodeCallback(error, results) {
-    var index = arguments.length;
-    var args = [];
-
-    if (error == null) {
-        if (--index > 0) {
-            while (index) {
-                args[--index] = arguments[index + 1];
-            }
-        }
-
-        this.setState(STATE_RESOLVED, args);
-    } else {
-        this.reject(error);
-    }
-};
-
 Response.prototype = State.create(Response);
 
 /**
@@ -647,17 +625,6 @@ Response.prototype.State = State;
  * @default true
  */
 Response.prototype.isResponse = true;
-
-/**
- *
- * @param {Function} [callback=Response.nodeCallback]
- * @returns {Function}
- */
-Response.prototype.callback = function (callback) {
-    var _callback = isFunction(callback) ? callback : Response.nodeCallback;
-
-    return bind(_callback, this);
-};
 
 /**
  *
