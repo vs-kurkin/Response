@@ -1061,19 +1061,14 @@ Queue.prototype.stop = function () {
 
 /**
  *
- * @param {Response|Function|*} item
+ * @param {Response|Promise|Function|*} item
  * @param {String} [name=item.name]
  * @returns {Queue}
  */
 Queue.prototype.push = function (item, name) {
-    if (arguments.length > 1) {
-        if (!isArray(this.keys)) {
-            this.keys = [];
-        }
+    var keyIndex = this.stack.length + this.stateData.length;
 
-        this.keys[this.stack.length + this.stateData.length] = name;
-    }
-
+    this.keys[keyIndex] = arguments.length > 1 || item == null ? name : item.name;
     this.stack.push(item);
 
     return this;
