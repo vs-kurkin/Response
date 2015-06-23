@@ -19,17 +19,15 @@ var suits = [{
 }, {
     name: '#onResolve()',
     fn: function () {
-        response.onResolve(r);
+        response.onResolve(fnc);
     },
     Old: {
         onStart: function () {
-            r = new oldResponse().onResolve(fnc);
             response = new oldResponse().resolve();
         }
     },
     New: {
         onStart: function () {
-            r = new Response().onResolve(fnc);
             response = new Response().resolve();
         }
     }
@@ -88,17 +86,24 @@ var suits = [{
     }
 }, {
     name: 'Queue#start()',
-    fn: function () {
-        queue.start().pending();
-    },
     Old: {
         onStart: function () {
-            queue = new oldResponse.Queue([fnc, fnc, fnc]).onNextItem(fnc).onResolve(fnc);
+            r = new oldResponse().resolve();
+        },
+        fn: function () {
+            new oldResponse.Queue([r, r, r])
+                .onResolve(fnc)
+                .start();
         }
     },
     New: {
         onStart: function () {
-            queue = new Response.Queue([fnc, fnc, fnc]).onNextItem(fnc).onResolve(fnc);
+            r = new Response().resolve();
+        },
+        fn: function () {
+            new Response.Queue([r, r, r])
+                .onResolve(fnc)
+                .start();
         }
     }
 }];
