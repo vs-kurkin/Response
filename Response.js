@@ -19,6 +19,69 @@ var EVENT_STOP = 'stop';
 var EVENT_NEXT_ITEM = 'nextItem';
 
 /**
+ * @param {Object} proto
+ * @param {Function} constructor
+ * @type {Function}
+ */
+var defineConstructor = isFunction(Object.defineProperty) ? function (proto, constructor) {
+    Object.defineProperty(proto, 'constructor', {
+        value: constructor,
+        enumerable: false,
+        writable: true,
+        configurable: true
+    });
+} : function (proto, constructor) {
+    proto.constructor = constructor;
+};
+
+/**
+ * @function
+ * @param {*} object
+ */
+var getKeys = isFunction(Object.keys) ? Object.keys : function keys(object) {
+    var keys = [];
+
+    for (var name in object) {
+        if (object.hasOwnProperty(name)) {
+            keys.push(name);
+        }
+    }
+
+    return keys;
+};
+
+/**
+ * @function
+ * @param {*} object
+ */
+var isArray = isFunction(Array.isArray) ? Array.isArray : function isArray(object) {
+    return object && (toString.call(object) === '[object Array]');
+};
+
+/**
+ *
+ * @param {Function} [callback]
+ * @param {Object} [context]
+ * @returns {Function}
+ * @type {Function}
+ */
+var bind = isFunction(Function.prototype.bind) ? function (callback, context) {
+    return callback && callback.bind(context);
+} : function (callback, context) {
+    return callback && function () {
+            var index = 0;
+            var length = arguments.length;
+            var args = new Array(length);
+
+            while (index < length) {
+                args[index] = arguments[index++];
+            }
+
+            return callback.apply(context, args);
+        }
+};
+
+/**
  *
  * @param {*} [state] Начальное состояние объекта.
  * @returns {State}
@@ -1433,26 +1496,6 @@ function emit(emitter, type, data) {
 
 /**
  *
- * @param {Function} callback
- * @param {Object} context
- * @returns {Function}
- */
-function bind(callback, context) {
-    return isFunction(callback.bind) ? callback.bind(context) : function () {
-        var index = 0;
-        var length = arguments.length;
-        var args = new Array(length);
-
-        while (index < length) {
-            args[index] = arguments[index++];
-        }
-
-        return callback.apply(context, args);
-    };
-}
-
-/**
- *
  * @param {Object} from
  * @param {Object} to
  */
@@ -1487,19 +1530,6 @@ function inherits(superConst, constructor) {
     return proto;
 }
 
-function defineConstructor(proto, constructor) {
-    if (Object.defineProperty) {
-        Object.defineProperty(proto, 'constructor', {
-            value: constructor,
-            enumerable: false,
-            writable: true,
-            configurable: true
-        });
-    } else {
-        proto.constructor = constructor;
-    }
-}
-
 /**
  *
  * @constructor
@@ -1507,27 +1537,3 @@ function defineConstructor(proto, constructor) {
 function Prototype() {
     Prototype.prototype = null;
 }
-
-/**
- * @function
- * @param {*} object
- */
-var getKeys = isFunction(Object.keys) ? Object.keys : function keys(object) {
-    var keys = [];
-
-    for (var name in object) {
-        if (object.hasOwnProperty(name)) {
-            keys.push(name);
-        }
-    }
-
-    return keys;
-};
-
-/**
- * @function
- * @param {*} object
- */
-var isArray = isFunction(Array.isArray) ? Array.isArray : function isArray(object) {
-    return object && (toString.call(object) === '[object Array]');
-};
