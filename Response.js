@@ -889,6 +889,14 @@ Response.prototype.done = function () {
 
 /**
  *
+ * @returns {Response}
+ */
+Response.prototype.fork = function () {
+    return new Response(this);
+};
+
+/**
+ *
  * @example
  * var r = new Response()
  *   .resolve(3) // resolve one result
