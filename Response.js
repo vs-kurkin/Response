@@ -150,15 +150,15 @@ State.create = function (constructor, copyStatic) {
 /**
  *
  * @static
- * @param {Function} method
+ * @param {Function} fnc
  * @param {Array} [args]
  * @param {Object} [context]
  * @returns {State}
  */
-State.invoke = function (method, args, context) {
+State.invoke = function (fnc, args, context) {
     var state = new this();
 
-    state.invoke(method, args, context);
+    state.invoke(fnc, args, context);
 
     return state;
 };
@@ -204,12 +204,12 @@ State.prototype.stateData = null;
 
 /**
  *
- * @param {Function} method
+ * @param {Function} fnc
  * @param {Array} [args]
  * @param {*} [context=this]
  * @returns {*}
  */
-State.prototype.invoke = function (method, args, context) {
+State.prototype.invoke = function (fnc, args, context) {
     var _args = isArray(args) ? args : [];
     var ctx = context == null ? this : context;
     var result;
@@ -217,31 +217,31 @@ State.prototype.invoke = function (method, args, context) {
     try {
         switch (_args.length) {
             case 0:
-                result = method.call(ctx);
+                result = fnc.call(ctx);
                 break;
             case 1:
-                result = method.call(ctx, _args[0]);
+                result = fnc.call(ctx, _args[0]);
                 break;
             case 2:
-                result = method.call(ctx, _args[0], _args[1]);
+                result = fnc.call(ctx, _args[0], _args[1]);
                 break;
             case 3:
-                result = method.call(ctx, _args[0], _args[1], _args[2]);
+                result = fnc.call(ctx, _args[0], _args[1], _args[2]);
                 break;
             case 4:
-                result = method.call(ctx, _args[0], _args[1], _args[2], _args[3]);
+                result = fnc.call(ctx, _args[0], _args[1], _args[2], _args[3]);
                 break;
             case 5:
-                result = method.call(ctx, _args[0], _args[1], _args[2], _args[3], _args[4]);
+                result = fnc.call(ctx, _args[0], _args[1], _args[2], _args[3], _args[4]);
                 break;
             default:
-                result = method.apply(ctx, _args);
+                result = fnc.apply(ctx, _args);
         }
     } catch (error) {
         result = toError(error);
 
         if (this && this.isState) {
-            this.setState(STATE_ERROR, result);
+            this.setState(STATE_ERROR, [result]);
         }
     }
 
@@ -570,7 +570,7 @@ Response.create = State.create;
 /**
  *
  * @static
- * @param {Function} method
+ * @param {Function} fnc
  * @param {Array} [args]
  * @param {Object} [context]
  * @type {Function}
@@ -1002,7 +1002,7 @@ Queue.create = State.create;
 /**
  *
  * @static
- * @param {Function} method
+ * @param {Function} fnc
  * @param {Array} [args]
  * @param {Object} [context]
  * @type {Function}
