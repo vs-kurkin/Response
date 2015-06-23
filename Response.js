@@ -764,10 +764,16 @@ Response.prototype.then = function (onResolve, onReject, onProgress, context) {
  * @param {Object} [context=this]
  * @returns {Response}
  */
-Response.prototype.always = function (listener, context) {
-    this
-        .onceState(STATE_RESOLVED, listener, context)
-        .onceState(STATE_REJECTED, listener, context);
+Response.prototype.any = function (listener, context) {
+    if (this.isResolved() || this.isRejected()) {
+        this.onceState(this.state, listener, context);
+    } else {
+        this.then(onAny, onAny, null, {
+            response: this,
+            listener: listener,
+            context: context
+        });
+    }
 
     return this;
 };
@@ -878,7 +884,7 @@ Response.prototype.listen = function (object) {
  * @returns {Response}
  */
 Response.prototype.done = function () {
-    return this.always(this.destroy);
+    return this.any(this.destroy);
 };
 
 /**
@@ -1428,6 +1434,15 @@ function then(object, resolve, reject, progress, context) {
     } else {
         object.then(bind(resolve, context), bind(reject, context), bind(progress, context));
     }
+}
+
+/**
+ *
+ */
+function onAny() {
+    this.response.off(this.response.isResolved() ? STATE_REJECTED : STATE_RESOLVED, onAny);
+
+    invokeListener(this.response, this.listener, this.context);
 }
 
 /**
