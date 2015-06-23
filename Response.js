@@ -831,13 +831,13 @@ Response.prototype.notify = function (object) {
  *     resolve('success');
  *   }));
  *
- * @param {Response|Object} response
+ * @param {Response|Promise} object
  * @this {Response}
- * @throws {Error} Бросает исключение, если response равен this.
+ * @throws {Error} Бросает исключение, если object равен this.
  * @returns {Response}
  */
-Response.prototype.listen = function (response) {
-    if (response === this) {
+Response.prototype.listen = function (object) {
+    if (object === this) {
         throw new Error('Cannot listen on itself');
     }
 
@@ -845,11 +845,7 @@ Response.prototype.listen = function (response) {
         this.pending();
     }
 
-    if (response.then.length === 4) {
-        response.then(this.resolve, this.reject, this.progress, this);
-    } else {
-        response.then(bind(this.resolve, this), bind(this.reject, this), bind(this.progress, this));
-    }
+    then(object, this.resolve, this.reject, this.progress, this);
 
     return this;
 };
@@ -1383,6 +1379,22 @@ function tryEmit(emitter, type, data) {
 function emit(emitter, type, data) {
     if (emitter._events && emitter._events[type]) {
         tryEmit(emitter, type, data);
+    }
+}
+
+/**
+ *
+ * @param {Response|Object} object
+ * @param {Function} [resolve]
+ * @param {Function} [reject]
+ * @param {Function} [progress]
+ * @param {Object} [context]
+ */
+function then(object, resolve, reject, progress, context) {
+    if (object.then.length === 4) {
+        object.then(resolve, reject, progress, context);
+    } else {
+        object.then(bind(resolve, context), bind(reject, context), bind(progress, context));
     }
 }
 
