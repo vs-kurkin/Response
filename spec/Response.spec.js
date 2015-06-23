@@ -17,13 +17,7 @@ describe('Response:', function () {
 
     function checkProperties() {
         expect(resp.state).toBe('pending');
-        expect(typeof resp.callback).toBe('function');
-        expect(resp.keys).toBeNull();
-
-        expect(resp.STATE_PENDING).toBe('pending');
-        expect(resp.STATE_RESOLVED).toBe('resolve');
-        expect(resp.STATE_REJECTED).toBe('error');
-        expect(resp.EVENT_PROGRESS).toBe('progress');
+        expect(resp.keys).toEqual([]);
     }
 
     function checkInherit () {
@@ -49,6 +43,11 @@ describe('Response:', function () {
 
     it('check exports', function () {
         expect(typeof Response).toBe('function');
+
+        expect(Response.STATE_PENDING).toBe('pending');
+        expect(Response.STATE_RESOLVED).toBe('resolve');
+        expect(Response.STATE_REJECTED).toBe('error');
+        expect(Response.EVENT_PROGRESS).toBe('progress');
     });
 
     it('check constructor: prototype', checkPrototype);
@@ -73,26 +72,6 @@ describe('Response:', function () {
         describe('constructor:', function () {
             describe('prototype', function () {
                 it('inherit', checkPrototype);
-            });
-
-            it('changed constants', function () {
-                Const = getConst();
-                Const.prototype.STATE_PENDING = 'test1';
-                Const.prototype.STATE_RESOLVED = 'test2';
-                Const.prototype.STATE_REJECTED = 'test3';
-                Const.prototype.EVENT_PROGRESS = 'test4';
-
-                resp
-                    .onPending(listener)
-                    .onResolve(listener)
-                    .onReject(listener)
-                    .onProgress(listener)
-                    .resolve()
-                    .reject(1)
-                    .pending()
-                    .progress(2);
-
-                expect(listener.calls.count()).toBe(4);
             });
 
             it('static methods', function () {
@@ -130,21 +109,6 @@ describe('Response:', function () {
         });
     });
 
-    it('check compatible', function () {
-        expect(Response.isCompatible(resp)).toBeTruthy();
-        expect(Response.isCompatible({
-            then: function () {
-            }
-        })).toBeTruthy();
-        expect(Response.isCompatible(1)).toBeFalsy();
-        expect(Response.isCompatible('1')).toBeFalsy();
-        expect(Response.isCompatible({})).toBeFalsy();
-        expect(Response.isCompatible([])).toBeFalsy();
-        expect(Response.isCompatible(function () {
-        })).toBeFalsy();
-        expect(Response.isCompatible(new State())).toBeFalsy();
-    });
-
     it('check created object', function () {
         resp = Response.create();
 
@@ -162,6 +126,7 @@ describe('Response:', function () {
             expect(resp.resolve().isPending()).toBeFalsy();
             expect(resp.reject().isPending()).toBeFalsy();
             expect(resp.setState(1).isPending()).toBeTruthy();
+            expect(resp.destroy().isPending()).toBeFalsy();
         });
 
         it('via isResolved', function () {
@@ -428,9 +393,9 @@ describe('Response:', function () {
                 expect(listener.calls.count()).toBe(3);
             });
 
-            it('on always', function () {
+            it('on any', function () {
                 resp
-                    .always(listener, ctx)
+                    .any(listener, ctx)
                     .resolve()
                     .reject('error')
                     .setState(1)
@@ -438,7 +403,7 @@ describe('Response:', function () {
                     .reject('error')
                     .pending(1);
 
-                expect(listener.calls.count()).toBe(2);
+                expect(listener.calls.count()).toBe(1);
             });
 
             describe('on progress', function () {
@@ -534,91 +499,6 @@ describe('Response:', function () {
 
                     ctx = resp = new Const().resolve().done();
                 });
-            });
-        });
-    });
-
-    describe('integration:', function () {
-        it('check inherited callback', function () {
-            function callback (){}
-
-            Const = getConst();
-            Const.prototype.callback = callback;
-
-            expect(new Const().callback).toBe(callback);
-        });
-
-        it('call default callback with first argument should be change state to "error"', function () {
-            resp.callback(1);
-
-            expect(resp.state).toBe('error');
-            expect(resp.stateData).toEqual([new Error(1)]);
-        });
-
-        it('call default callback without first argument should be change state to "resolve"', function () {
-            resp.callback();
-
-            expect(resp.state).toBe('resolve');
-            expect(resp.stateData).toEqual([]);
-        });
-
-        it('call default callback with null first argument should be change state to "resolve"', function () {
-            resp.callback(null);
-
-            expect(resp.state).toBe('resolve');
-            expect(resp.stateData).toEqual([]);
-        });
-
-        it('check arguments of default callback', function () {
-            resp.callback(null, 1, {}, '1');
-
-            expect(resp.state).toBe('resolve');
-            expect(resp.stateData).toEqual([1, {}, '1']);
-        });
-
-        describe('make', function () {
-            var ctx = {};
-
-            it('callback (check returns value)', function () {
-                expect(resp.makeCallback()).toBe(resp);
-            });
-
-            it('default callback', function () {
-                resp.callback = listener;
-
-                resp
-                    .makeCallback()
-                    .callback();
-
-                expect(resp.callback).not.toBe(listener);
-                expect(listener).toHaveBeenCalled();
-            });
-
-            it('default callback with custom context', function () {
-                resp.callback = listener;
-
-                resp
-                    .makeCallback(null, ctx)
-                    .callback();
-
-                expect(listener.calls.mostRecent().object).toBe(ctx);
-            });
-
-            it('custom callback', function () {
-                resp
-                    .makeCallback(listener)
-                    .callback();
-
-                expect(resp.callback).not.toBe(listener);
-                expect(listener.calls.mostRecent().object).toBe(resp);
-            });
-
-            it('custom callback with custom context', function () {
-                resp
-                    .makeCallback(listener, ctx)
-                    .callback();
-
-                expect(listener.calls.mostRecent().object).toBe(ctx);
             });
         });
     });
