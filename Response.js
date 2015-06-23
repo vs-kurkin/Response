@@ -892,21 +892,21 @@ Response.prototype.getResult = function (key) {
             return toObject(this.getStateData(key));
             break;
         default:
-            if (this.stateData.length === 1) {
-                return toObject(this.stateData[0]);
-            } else {
-                return this.toObject(key);
-            }
+            var keys = isArray(key) ? key : this.keys;
+
+            return keys.length ? this.toObject(keys) : toObject(this.stateData[0]);
             break;
     }
 };
 
 /**
  *
- * @returns {Error|null}
+ * @returns {Error|undefined}
  */
 Response.prototype.getReason = function () {
-    return this.isRejected() ? this.stateData[0] : null;
+    if (this.isRejected()) {
+        return this.stateData[0];
+    }
 };
 
 /**
