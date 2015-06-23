@@ -1028,12 +1028,14 @@ Queue.prototype.item = null;
  * @returns {Queue}
  */
 Queue.prototype.start = function () {
-    if (!this.isStarted && this.isPending()) {
+    if (this.isStarted === false && this.isPending()) {
         this.isStarted = true;
 
         emit(this, EVENT_START, []);
 
-        iterate(this);
+        if (this.isStarted && (!isCompatible(this.item) || isItemRejected(this.item) || isItemResolved(this.item))) {
+            iterate(this);
+        }
     }
 
     return this;
@@ -1047,11 +1049,11 @@ Queue.prototype.stop = function () {
     if (this.isStarted === true) {
         this.isStarted = false;
 
-        if (this.stack.length === 0) {
-            this.item = null;
-        }
-
         emit(this, EVENT_STOP, []);
+
+        if (this.isResolved() || this.isRejected()) {
+            this.stack.length = 0;
+        }
     }
 
     return this;
@@ -1148,18 +1150,13 @@ module.exports = Response;
  * @param {Queue} queue
  */
 function iterate(queue) {
-    if (!queue.isStarted) {
-        return;
-    }
-
     while (queue.stack.length) {
-        if (checkFunction(queue, queue.item) || emitNext(queue, queue.item) || checkResponse(queue, queue.item)) {
+        if (checkFunction(queue, queue.item) || checkResponse(queue, queue.item)) {
             return;
         }
-
-        queue.stateData.push(queue.stack.shift());
     }
 
+    queue.item = null;
     queue.setState(STATE_RESOLVED, queue.stateData);
 }
 
@@ -1170,19 +1167,20 @@ function iterate(queue) {
  * @returns {Boolean}
  */
 function checkFunction(queue, item) {
-    if (isFunction(queue.item)) {
-        var results;
+    var next = queue.stack.shift();
+    var results;
 
-        if (Response.isResponse(item)) {
-            results = item.state === STATE_RESOLVED ? item.stateData : null;
-        } else {
-            results = [item];
-        }
-
-        queue.stack[0] = queue.invoke.call(queue.isStrict ? queue : null, queue.item, results, queue);
+    if (isFunction(next)) {
+        results = Response.isResponse(item) ? item.stateData : [item];
+        next = queue.invoke.call(queue.isStrict ? queue : null, next, results, queue);
     }
 
-    queue.item = queue.stack[0];
+    if (queue.isPending()) {
+        queue.item = next;
+        queue.stateData.push(next);
+
+        emit(queue, EVENT_NEXT_ITEM, [next]);
+    }
 
     return !queue.isStarted;
 }
@@ -1191,39 +1189,55 @@ function checkFunction(queue, item) {
  *
  * @param {Queue} queue
  * @param {*} item
- * @returns {Boolean}
+ * @returns {Boolean|undefined}
  */
-function emitNext(queue, item) {
-    emit(queue, EVENT_NEXT_ITEM, [item]);
-
-    return !queue.isStarted;
-}
-
 function checkResponse(queue, item) {
-    if (item && Response.isResponse(item) && item !== queue) {
-        if (item.state === STATE_REJECTED && queue.isStrict) {
-            queue.setState(STATE_REJECTED, item.stateData);
+    if (item === queue) {
+        throw new Error('Cannot listen on itself');
+    }
 
-            return true;
-        } else if (item.state !== STATE_RESOLVED) {
-            item
-                .onceState(STATE_RESOLVED, onEndStackItem, queue)
-                .onceState(STATE_REJECTED, queue.isStrict ? queue.reject : onEndStackItem, queue);
-
-            return true;
-        }
+    if (isCompatible(item) && !isItemResolved(item)) {
+        then(item, onResolveItem, onRejectItem, null, queue);
+        return true;
     }
 }
 
 /**
  * @this {Queue}
  */
-function onEndStackItem() {
-    if (this.isStarted) {
-        this.stateData.push(this.stack.shift());
+function onResolveItem() {
+    if (Response.isResponse(this.item)) {
+        this.item.off(STATE_REJECTED, onRejectItem);
+    }
 
+    if (this.isStarted) {
         iterate(this);
     }
+}
+
+/**
+ * @param {Error} error
+ * @this {Queue}
+ */
+function onRejectItem(error) {
+    if (Response.isResponse(this.item)) {
+        this.item.off(STATE_RESOLVED, onResolveItem);
+    }
+
+    if (this.isStrict) {
+        this.item = null;
+        this.reject(error);
+    } else if (this.isStarted) {
+        iterate(this);
+    }
+}
+
+function isItemResolved(item) {
+    return isFunction(item.isResolved) && item.isResolved();
+}
+
+function isItemRejected(item) {
+    return isFunction(item.isRejected) && item.isRejected();
 }
 
 /**
