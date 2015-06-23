@@ -92,8 +92,8 @@ function State(state) {
     EventEmitter.call(this);
 
     this.state = arguments.length ? state : this.state;
-    this.data = this.data || {};
     this.stateData = [];
+    this.data = this.data || {};
     this.keys = [];
 
     return this;
@@ -210,9 +210,9 @@ State.prototype.stateData = null;
  * @returns {*}
  */
 State.prototype.invoke = function (method, args, context) {
+    var _args = isArray(args) ? args : [];
     var ctx = context == null ? this : context;
     var result;
-    var _args = (args && !isNaN(args.length)) ? args : [];
 
     try {
         switch (_args.length) {
@@ -301,7 +301,7 @@ State.prototype.setState = function (state, data) {
     var _hasData = arguments.length > 1;
     var _data = _hasData ? wrapIfArray(data) : [];
 
-    if (_state || (_hasData && _data.length)) {
+    if (_state || _hasData) {
         this.stateData = _data;
 
         if (this._event) {
@@ -498,7 +498,7 @@ State.prototype.setKeys = function (keys) {
 function Response(parent) {
     this.State(STATE_PENDING);
 
-    if (parent != null && isFunction(parent.then)) {
+    if (isCompatible(parent)) {
         this.listen(parent);
     }
 
@@ -659,89 +659,6 @@ Response.prototype.callback = function (callback) {
     return bind(_callback, this);
 };
 
-function nodefy(method, args, context) {
-    var r = new Response();
-
-    args.push(r.callback());
-
-    r.invoke(method, args, context);
-
-    return r;
-}
-
-var path = require('path');
-
-new Queue([
-    getStat,
-    isDirectory,
-    function (isDir) {
-        if (!isDir) {
-            this.resolve(0);
-        } else {
-            return 'dirname';
-        }
-    },
-    readDirectory,
-    joinPaths,
-    getFilesStats,
-    countingFiles
-])
-    .setData('fs', {
-        path: 'file'
-    })
-    .onResolve(function () {
-        this.resolve(this.getStateData('countingFiles'));
-    })
-    .start();
-
-function countingFiles (stats) {
-    var result = 0;
-    var index = stats.length;
-
-    while (index) {
-        if (this.stats[--index].isFile()) {
-            result++;
-        }
-    }
-
-    return result;
-}
-
-function joinPaths (paths) {
-
-}
-
-function getStat (path) {
-    return nodefy(fs.stat, [path], fs);
-}
-
-function isDirectory (stats) {
-    return stats.isDirectory();
-}
-
-function readDirectory (path) {
-    return nodefy(fs.readdir, [path], fs);
-}
-
-function resolveStateData () {
-    this.setState(Response.STATE_RESOLVED, this.stateData);
-}
-
-function getFilesStats (files) {
-    var queue = new Queue();
-    var index = files.length;
-
-    while (index) {
-        queue.push(nodefy(fs.stat, [files[--index]], fs));
-    }
-
-    return queue
-        .onResolve(resolveStateData)
-        .strict()
-        .start();
-}
-
-
 /**
  *
  * @returns {Response}
@@ -779,7 +696,7 @@ Response.prototype.resolve = function (results) {
  */
 Response.prototype.reject = function (reason) {
     if (arguments.length || !this.isRejected()) {
-        this.setState(STATE_REJECTED, toError(reason));
+        this.setState(STATE_REJECTED, [toError(reason)]);
     }
 
     return this;
@@ -804,10 +721,10 @@ Response.prototype.progress = function (progress) {
  */
 Response.prototype.isPending = function () {
     return !(
-    this.hasOwnProperty('state') &&
-    this.state === null ||
-    this.state === STATE_RESOLVED ||
-    this.state === STATE_REJECTED
+        this.hasOwnProperty('state') &&
+        this.state == null ||
+        this.state === STATE_RESOLVED ||
+        this.state === STATE_REJECTED
     );
 };
 
@@ -1001,7 +918,7 @@ Response.prototype.done = function () {
  */
 Response.prototype.getResult = function (key) {
     if (this.isRejected()) {
-        return undefined;
+        return;
     }
 
     switch (typeof key) {
@@ -1040,15 +957,15 @@ function Queue(stack, start) {
 
     this.stack = isArray(stack) ? stack : [];
     this.item = null;
+    this.isStarted = false;
     this.isStrict = this.isStrict;
-    this.isStarted = this.isStarted;
     this
         .onState(STATE_RESOLVED, this.stop)
         .onState(STATE_REJECTED, this.stop);
 
     this.keys.length = this.stack.length;
 
-    if (typeof start === 'boolean' ? start.valueOf() : false) {
+    if (typeof start === 'boolean' && start) {
         this.start();
     }
 
@@ -1227,6 +1144,7 @@ Queue.prototype.destroy = function (recursive) {
  */
 Queue.prototype.onStart = function (listener, context) {
     this.on(EVENT_START, listener, context);
+
     return this;
 };
 
@@ -1238,6 +1156,7 @@ Queue.prototype.onStart = function (listener, context) {
  */
 Queue.prototype.onStop = function (listener, context) {
     this.on(EVENT_STOP, listener, context);
+
     return this;
 };
 
@@ -1249,6 +1168,7 @@ Queue.prototype.onStop = function (listener, context) {
  */
 Queue.prototype.onNextItem = function (listener, context) {
     this.on(EVENT_NEXT_ITEM, listener, context);
+
     return this;
 };
 
@@ -1361,6 +1281,15 @@ function isFunction(object) {
 
 /**
  *
+ * @param {*} item
+ * @returns {Boolean}
+ */
+function isCompatible(item) {
+    return item != null && isFunction(item.then);
+}
+
+/**
+ *
  * @param {*|Error} value
  * @returns {Error}
  */
@@ -1375,17 +1304,13 @@ function toError(value) {
  * @param {Array} data
  */
 function changeState(object, state, data) {
-    var _events = object._events;
-
     object.stopEmit(object.state);
     object.state = state;
 
-    if (_events) {
-        emit(object, state, data);
+    emit(object, state, data);
 
-        if (object.state === state) {
-            emit(object, EVENT_CHANGE_STATE, [state]);
-        }
+    if (object.state === state) {
+        emit(object, EVENT_CHANGE_STATE, [state]);
     }
 }
 
@@ -1436,15 +1361,13 @@ function toObject(item) {
  * @returns {*}
  */
 function invokeListener(emitter, listener, context) {
-    if (listener) {
-        if (isFunction(listener)) {
-            return emitter.invoke(listener, emitter.stateData, context);
-        } else if (isFunction(listener.emit)) {
-            return emit(listener, emitter.state, emitter.stateData);
-        }
+    if (isFunction(listener)) {
+        emitter.invoke(listener, emitter.stateData, context);
+    } else if (listener && isFunction(listener.emit)) {
+        emit(listener, emitter.state, emitter.stateData);
+    } else {
+        throw new Error(EventEmitter.LISTENER_TYPE_ERROR);
     }
-
-    throw new Error(EventEmitter.LISTENER_TYPE_ERROR);
 }
 
 /**
@@ -1478,7 +1401,7 @@ function tryEmit(emitter, type, data) {
                 emitter.emit.apply(emitter, [type].concat(data));
         }
     } catch (error) {
-        emitter.setState(STATE_ERROR, toError(error));
+        emitter.setState(STATE_ERROR, [toError(error)]);
     }
 }
 
@@ -1489,7 +1412,7 @@ function tryEmit(emitter, type, data) {
  * @param {Array} data
  */
 function emit(emitter, type, data) {
-    if (emitter._events && (type in emitter._events)) {
+    if (emitter._events && emitter._events[type]) {
         tryEmit(emitter, type, data);
     }
 }
