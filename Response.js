@@ -1278,10 +1278,20 @@ function onRejectItem(error) {
     }
 }
 
+/**
+ *
+ * @param {Response|Promise} item
+ * @returns {Boolean}
+ */
 function isItemResolved(item) {
     return isFunction(item.isResolved) && item.isResolved();
 }
 
+/**
+ *
+ * @param {Response|Promise} item
+ * @returns {Boolean}
+ */
 function isItemRejected(item) {
     return isFunction(item.isRejected) && item.isRejected();
 }
