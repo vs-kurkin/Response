@@ -96,23 +96,7 @@ describe('Queue:', function () {
         });
 
         describe('constructor:', function () {
-            describe('prototype', function () {
-                it('inherit', checkPrototype);
-
-                it('changed constants', function () {
-                    Const.prototype.EVENT_START = 'test1';
-                    Const.prototype.EVENT_STOP = 'test2';
-                    Const.prototype.EVENT_NEXT_ITEM = 'test3';
-
-                    new Const([1])
-                        .onStart(listener)
-                        .onStop(listener)
-                        .onNextItem(listener)
-                        .start();
-
-                    expect(listener.calls.count()).toBe(3);
-                });
-            });
+            it('inherit', checkPrototype);
 
             it('static methods', function () {
                 for (var name in Const) {

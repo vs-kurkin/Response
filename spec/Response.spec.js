@@ -1,10 +1,11 @@
 describe('Response:', function () {
-    var EE = require('EventEmitter');
     var Response = require('../Response');
     var State = Response.State;
     var resp;
     var Const;
     var listener;
+    var arg;
+    var ctx;
 
     function getConst(sp) {
         function Const() {
@@ -39,6 +40,8 @@ describe('Response:', function () {
         Const = Response;
         resp = new Response();
         listener = jasmine.createSpy();
+        arg = {};
+        ctx = {};
     });
 
     it('check exports', function () {
@@ -152,14 +155,6 @@ describe('Response:', function () {
     });
 
     describe('set state', function () {
-        var arg;
-        var ctx;
-
-        beforeEach(function () {
-            arg = {};
-            ctx = {};
-        });
-
         afterEach(function () {
             expect(listener).toHaveBeenCalled();
             expect(listener.calls.mostRecent().object).toBe(ctx);
@@ -500,6 +495,182 @@ describe('Response:', function () {
                     ctx = resp = new Const().resolve().done();
                 });
             });
+        });
+    });
+
+    describe('fork', function () {
+        it('should return a new response', function () {
+            expect(Response.isResponse(resp.fork())).toBeTruthy();
+        });
+
+        it('should subscribe a new response', function () {
+            var resp2 = resp.fork();
+
+            resp.resolve();
+
+            expect(resp2.isResolved()).toBeTruthy();
+
+            resp.reject('error');
+
+            expect(resp2.isRejected()).toBeTruthy();
+
+            resp.setState(1);
+
+            expect(resp2.isRejected()).toBeTruthy();
+        });
+
+        it('new response don`t modify a parent', function () {
+            var resp2 = resp.fork();
+
+            resp2.resolve();
+
+            expect(resp.isPending()).toBeTruthy();
+        });
+    });
+
+    describe('map', function () {
+        it('should invoke listener if state is resolved', function () {
+            resp
+                .resolve(arg)
+                .map(listener);
+
+            expect(listener).toHaveBeenCalledWith(arg);
+        });
+
+        it('default context must be a response', function () {
+            resp
+                .resolve(arg)
+                .map(listener);
+
+            expect(listener.calls.mostRecent().object).toBe(resp);
+        });
+
+        it('call with custom context', function () {
+            resp
+                .resolve(arg)
+                .map(listener, ctx);
+
+            expect(listener.calls.mostRecent().object).toBe(ctx);
+        });
+
+        it('should called listener only on resolve', function () {
+            resp.map(listener, ctx);
+
+            expect(listener).not.toHaveBeenCalled();
+
+            resp.reject('error');
+
+            expect(listener).not.toHaveBeenCalled();
+
+            resp.pending();
+
+            expect(listener).not.toHaveBeenCalled();
+
+            resp.resolve();
+
+            expect(listener).toHaveBeenCalled();
+        });
+
+        it('should reject if listener throw exception', function () {
+            var error = new Error('error');
+            var onMap = function () {
+                throw error;
+            };
+
+            resp
+                .map(onMap)
+                .onReject(listener)
+                .resolve();
+
+            expect(listener).toHaveBeenCalledWith(error);
+            expect(resp.isRejected()).toBeTruthy();
+
+            resp
+                .resolve()
+                .map(onMap);
+
+            expect(listener).toHaveBeenCalledWith(error);
+            expect(resp.isRejected()).toBeTruthy();
+        });
+    });
+
+    describe('getResult', function () {
+        it('should return undefined if not resolved', function () {
+            expect(resp.getResult()).toBeUndefined();
+            expect(resp.reject('error').getResult()).toBeUndefined();
+        });
+
+        it('should return result by key', function () {
+            resp
+                .setKeys(['key1', 'key2'])
+                .resolve(1, 2);
+
+            expect(resp.getResult('key1')).toBe(1);
+            expect(resp.getResult('key2')).toBe(2);
+        });
+
+        it('should called toObject when return by key', function () {
+            resp
+                .setKeys(['1'])
+                .resolve({toObject: listener})
+                .getResult('1');
+
+            expect(listener).toHaveBeenCalled();
+        });
+
+        it('should return first result if keys is not defined', function () {
+            expect(resp.resolve(1, 2).getResult()).toBe(1);
+        });
+
+        it('should called toObject for first result', function () {
+            resp.resolve({
+                toObject: listener
+            }).getResult();
+
+            expect(listener).toHaveBeenCalled();
+        });
+
+        it('should return results by default keys', function () {
+            resp
+                .setKeys(['key1', 'key2'])
+                .resolve(1, 2);
+
+            expect(resp.getResult()).toEqual({
+                key1: 1,
+                key2: 2
+            });
+        });
+
+        it('should called toObject for all results', function () {
+            resp
+                .setKeys(['key1', 'key2'])
+                .resolve({toObject: listener}, {toObject: listener})
+                .getResult();
+
+            expect(listener.calls.count()).toBe(2);
+        });
+
+        it('should return results by custom keys', function () {
+            resp
+                .setKeys(['key1', 'key2'])
+                .resolve(1, 2);
+
+            expect(resp.getResult(['key3', 'key4'])).toEqual({
+                key3: 1,
+                key4: 2
+            });
+        });
+    });
+
+    describe('getReason', function () {
+        it('should return undefined if not rejected', function () {
+            expect(resp.getReason()).toBeUndefined();
+            expect(resp.resolve().getReason()).toBeUndefined();
+        });
+
+        it('should return error if rejected', function () {
+            expect(resp.reject('error').getReason()).toEqual(new Error('error'));
+            expect(resp.getReason()).toBe(resp.stateData[0]);
         });
     });
 });

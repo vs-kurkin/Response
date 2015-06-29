@@ -465,6 +465,51 @@ describe('State:', function () {
         });
     });
 
+    describe('getStateData', function () {
+        it('should returns undefined if a data of state  are missing', function () {
+            expect(state.getStateData(1)).toBeUndefined();
+        });
+
+        it('should returns undefined if key is not defined', function () {
+            expect(state
+                .setState('state', ['data'])
+                .setKeys([1])
+                .getStateData(2))
+                .toBeUndefined();
+        });
+
+        it('should be returns undefined if keys is empty', function () {
+            expect(state
+                .setState('state', ['data'])
+                .getStateData(1))
+                .toBeUndefined();
+        });
+
+        it('key should be strict equal', function () {
+            expect(state
+                .setState('state', ['data'])
+                .setKeys([1])
+                .getStateData('1'))
+                .toBeUndefined();
+        });
+
+        it('must return data', function () {
+            expect(state
+                .setState('state', ['data'])
+                .setKeys(['1'])
+                .getStateData('1'))
+                .toBe('data');
+        });
+
+        it('must return latest value', function () {
+            expect(state
+                .setState('state', ['data1', 'data2'])
+                .setKeys(['1', '1'])
+                .getStateData('1'))
+                .toBe('data2');
+        });
+    });
+
     it('destroy', function () {
         state
             .on(1, function () {
@@ -543,6 +588,12 @@ describe('State:', function () {
 
             expect(listener.calls.mostRecent().object).toBe(ctx);
         });
+
+        it('Should remain in the same state if no error', function () {
+            state.setState(1).invoke(listener);
+
+            expect(state.state).toBe(1);
+        })
     });
 
     describe('toObject', function () {
@@ -621,6 +672,15 @@ describe('State:', function () {
                 .toObject(['first']))
                 .toEqual({
                     first: false
+                });
+        });
+
+        it('should return latest value if there are duplicate keys', function () {
+            expect(state
+                .setState(1, [1, 2])
+                .toObject(['1', '1']))
+                .toEqual({
+                    1: 2
                 });
         });
     });
