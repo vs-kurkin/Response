@@ -969,16 +969,16 @@ Response.prototype.getReason = function () {
 
 /**
  *
- * @param {Response[]|Promise[]|Function[]|*[]} [stack=[]]
+ * @param {Response[]|Promise[]|Function[]|*[]} [items=[]]
  * @param {Boolean} [start=false]
  * @constructor
  * @extends {Response}
  * @returns {Queue}
  */
-function Queue(stack, start) {
+function Queue(items, start) {
     this.Response();
 
-    this.stack = isArray(stack) ? stack : [];
+    this.items = isArray(items) ? items : [];
     this.item = null;
     this.isStarted = false;
     this.isStrict = this.isStrict;
@@ -986,7 +986,7 @@ function Queue(stack, start) {
         .onState(STATE_RESOLVED, this.stop)
         .onState(STATE_REJECTED, this.stop);
 
-    this.keys.length = this.stack.length;
+    this.keys.length = this.items.length;
 
     if (typeof start === 'boolean' && start) {
         this.start();
@@ -1072,7 +1072,7 @@ Queue.prototype.isStarted = false;
  * @type {Array}
  * @default null
  */
-Queue.prototype.stack = null;
+Queue.prototype.items = null;
 
 /**
  * @readonly
@@ -1110,7 +1110,7 @@ Queue.prototype.stop = function () {
         emit(this, EVENT_STOP, []);
 
         if (this.isResolved() || this.isRejected()) {
-            this.stack.length = 0;
+            this.items.length = 0;
         }
     }
 
@@ -1124,10 +1124,10 @@ Queue.prototype.stop = function () {
  * @returns {Queue}
  */
 Queue.prototype.push = function (item, name) {
-    var keyIndex = this.stack.length + this.stateData.length;
+    var keyIndex = this.items.length + this.stateData.length;
 
     this.keys[keyIndex] = arguments.length > 1 || item == null ? name : item.name;
-    this.stack.push(item);
+    this.items.push(item);
 
     return this;
 };
@@ -1148,7 +1148,7 @@ Queue.prototype.strict = function (flag) {
  */
 Queue.prototype.destroy = function (recursive) {
     if (recursive === true) {
-        destroyItems(this.stack.concat(this.stateData));
+        destroyItems(this.items.concat(this.stateData));
     }
 
     destroy(this);
@@ -1203,7 +1203,7 @@ module.exports = Response;
  * @param {Queue} queue
  */
 function iterate(queue) {
-    while (queue.stack.length) {
+    while (queue.items.length) {
         if (checkFunction(queue, queue.item) || checkResponse(queue, queue.item)) {
             return;
         }
@@ -1220,7 +1220,7 @@ function iterate(queue) {
  * @returns {Boolean}
  */
 function checkFunction(queue, item) {
-    var next = queue.stack.shift();
+    var next = queue.items.shift();
     var results;
 
     if (isFunction(next)) {
