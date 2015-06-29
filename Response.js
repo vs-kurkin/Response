@@ -766,7 +766,7 @@ Response.prototype.then = function (onResolve, onReject, onProgress, context) {
  */
 Response.prototype.any = function (listener, context) {
     if (this.isResolved() || this.isRejected()) {
-        this.onceState(this.state, listener, context);
+        invokeListener(this, listener, context);
     } else {
         this.then(onAny, onAny, null, {
             response: this,
@@ -902,11 +902,19 @@ Response.prototype.fork = function () {
  * @returns {Response}
  */
 Response.prototype.map = function (listener, context) {
-    return this.onResolve(onMap, {
+    var _context = {
         response: this,
         listener: listener,
         context: context
-    });
+    };
+
+    if(this.isResolved()) {
+        onMap.call(_context);
+    } else {
+        this.onResolve(onMap, _context);
+    }
+
+    return this;
 };
 
 /**
@@ -928,26 +936,25 @@ Response.prototype.map = function (listener, context) {
  *   .setKeys(['foo', 'bar']) // sets a default keys
  *   .getResult('bar') // 2, returns result on a default key
  *
- * @param {String|Number|String[]} [key]
+ * @param {String|Number|String[]|Number[]} [key]
  * @returns {*}
  * @throws {Error}
  */
 Response.prototype.getResult = function (key) {
-    if (this.isRejected()) {
-        return;
+    if (this.isResolved()) {
+        switch (typeof key) {
+            case 'string':
+            case 'number':
+                return toObject(this.getStateData(key));
+                break;
+            default:
+                var keys = isArray(key) ? key : this.keys;
+
+                return keys.length ? this.toObject(keys) : toObject(this.stateData[0]);
+                break;
+        }
     }
 
-    switch (typeof key) {
-        case 'string':
-        case 'number':
-            return toObject(this.getStateData(key));
-            break;
-        default:
-            var keys = isArray(key) ? key : this.keys;
-
-            return keys.length ? this.toObject(keys) : toObject(this.stateData[0]);
-            break;
-    }
 };
 
 /**
@@ -1472,9 +1479,11 @@ function then(object, resolve, reject, progress, context) {
  *
  */
 function onAny() {
-    this.response.off(this.response.isResolved() ? STATE_REJECTED : STATE_RESOLVED, onAny);
+    var response = this.response;
 
-    invokeListener(this.response, this.listener, this.context);
+    response.off(response.isResolved() ? STATE_REJECTED : STATE_RESOLVED, onAny);
+
+    invokeListener(response, this.listener, this.context);
 }
 
 /**
@@ -1482,8 +1491,11 @@ function onAny() {
  */
 function onMap () {
     var response = this.response;
+    var result = response.invoke(this.listener, response.stateData, this.context);
 
-    response.resolve(response.invoke(this.listener, response.stateData, this.context));
+    if (response.isResolved()) {
+        response.resolve(result);
+    }
 }
 
 /**
