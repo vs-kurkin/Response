@@ -5,8 +5,9 @@ The extensible event-driven stateful interface.
  * State(state)
    * `.EVENT_CHANGE_STATE`
    * `.STATE_ERROR`
-   * `.isState`
+   * `.isState(object)`
    * `.create`
+   * `.invoke(method, args, context)`
    
    * `#isState`
    * `#state`
@@ -32,13 +33,13 @@ The extensible event-driven stateful interface.
    * `.STATE_RESOLVED`
    * `.STATE_REJECTED`
    * `.EVENT_PROGRESS`
-   * `.State(state)`
-   * `.Queue(stack, start)`
    * `.isResponse(object)`
    * `.create(constructor, copyStatic)`
    * `.resolve(results)`
    * `.reject(reason)`
-   * `.nodeCallback(error, result)`
+   * `.invoke(method, args, context)`
+   * `.State(state)`
+   * `.Queue(stack, start)`
    
    * `#State(state)`
    * `#isResponse`
@@ -50,12 +51,14 @@ The extensible event-driven stateful interface.
    * `#isResolved()`
    * `#isRejected()`
    * `#then(onResolve, onReject, onProgress, context)`
-   * `#always(listener, context)`
+   * `#any(listener, context)`
    * `#onPending(listener, context)`
    * `#onResolve(listener, context)`
    * `#notify(parent)`
    * `#listen(response)`
    * `#done()`
+   * `#map()`
+   * `#fork()`
    * `#getResult(key)`
    * `#getReason()`
    
@@ -64,6 +67,7 @@ The extensible event-driven stateful interface.
    * `.EVENT_STOP`
    * `.EVENT_NEXT_ITEM`
    * `.create(constructor, copyStatic)`
+   * `.invoke(method, args, context)`
    * `.isQueue(object)`
    * `.Response(parent)`
    
@@ -73,7 +77,7 @@ The extensible event-driven stateful interface.
    * `#item`
    * `#start()`
    * `#stop()`
-   * `#push()`
+   * `#push(item, key)`
    * `#strict(flag)`
    * `#onStart(listener, context)`
    * `#onStop(listener, context)`
