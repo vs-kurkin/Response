@@ -8,7 +8,7 @@ The extensible event-driven stateful interface.
    * `.isState(object)`
    * `.create`
    * `.invoke(method, args, context)`
-   
+
    * `#isState`
    * `#state`
    * `#keys`
@@ -40,7 +40,7 @@ The extensible event-driven stateful interface.
    * `.invoke(method, args, context)`
    * `.State(state)`
    * `.Queue(stack, start)`
-   
+
    * `#State(state)`
    * `#isResponse`
    * `#pending()`
@@ -70,7 +70,7 @@ The extensible event-driven stateful interface.
    * `.invoke(method, args, context)`
    * `.isQueue(object)`
    * `.Response(parent)`
-   
+
    * `#isQueue`
    * `#isStrict`
    * `#isStarted`
