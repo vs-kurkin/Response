@@ -9,17 +9,17 @@ describe('Queue:', function () {
 
     function checkProperties() {
         // Queue
-        expect(queue.stack).toEqual([]);
+        expect(queue.items).toEqual([]);
         expect(queue.item).toBeNull();
         expect(queue.isStrict).toBeFalsy();
         expect(queue.isStarted).toBeFalsy();
         expect(queue.isQueue).toBeTruthy();
     }
 
-    function checkQueue(state, stateData, stack, item, isStarted) {
+    function checkQueue(state, stateData, items, item, isStarted) {
         expect(queue.state).toBe(state);
         expect(queue.stateData).toEqual(stateData);
-        expect(queue.stack).toEqual(stack);
+        expect(queue.items).toEqual(items);
         expect(queue.item).toBe(item);
         expect(queue.isStarted).toBe(isStarted);
     }
@@ -61,33 +61,33 @@ describe('Queue:', function () {
         it('properties', checkProperties);
         it('type', checkType);
 
-        it('set stack', function () {
-            var stack = [1, 2, 3];
+        it('set items', function () {
+            var items = [1, 2, 3];
 
-            expect(new Queue(stack).stack).toBe(stack);
+            expect(new Queue(items).items).toBe(items);
         });
 
-        it('set empty stack', function () {
-            var stack = [];
+        it('set empty items', function () {
+            var items = [];
 
-            expect(new Queue(stack).stack).toBe(stack);
+            expect(new Queue(items).items).toBe(items);
         });
 
-        it('set invalid stack', function () {
-            expect(new Queue(1).stack).toEqual([]);
-            expect(new Queue('1').stack).toEqual([]);
-            expect(new Queue({}).stack).toEqual([]);
-            expect(new Queue(null).stack).toEqual([]);
-            expect(new Queue(undefined).stack).toEqual([]);
+        it('set invalid items', function () {
+            expect(new Queue(1).items).toEqual([]);
+            expect(new Queue('1').items).toEqual([]);
+            expect(new Queue({}).items).toEqual([]);
+            expect(new Queue(null).items).toEqual([]);
+            expect(new Queue(undefined).items).toEqual([]);
             expect(new Queue(function () {
-            }).stack).toEqual([]);
+            }).items).toEqual([]);
         });
     });
 
     describe('check inheritance for', function () {
         beforeEach(function () {
-            Const = function (stack, start) {
-                Queue.call(this, stack, start);
+            Const = function (items, start) {
+                Queue.call(this, items, start);
             };
 
             Queue.create(Const, true);
@@ -145,14 +145,14 @@ describe('Queue:', function () {
         expect(queue === Queue.prototype).toBeFalsy();
     });
 
-    describe('stack', function () {
-        it('result of the queue must match stack', function () {
+    describe('items', function () {
+        it('result of the queue must match items', function () {
             expect(new Queue([1, function () {
                 return 2;
             }, {}], true).stateData).toEqual([1, 2, {}]);
         });
 
-        it('the execution order must match the stack', function () {
+        it('the execution order must match the items', function () {
             var callStack = [];
 
             function i1() {
@@ -234,17 +234,17 @@ describe('Queue:', function () {
             expect(listener.calls.count()).toBe(2);
         });
 
-        it('push in stack', function () {
+        it('push in items', function () {
             queue = new Queue([0]).push(1);
 
-            expect(queue.stack).toEqual([0, 1]);
+            expect(queue.items).toEqual([0, 1]);
 
             queue.start();
 
             expect(queue.stateData).toEqual([0, 1]);
         });
 
-        it('push in stack with key', function () {
+        it('push in items with key', function () {
             var i0 = 0;
             var i1 = 1;
             var i2 = function name() {
@@ -259,14 +259,14 @@ describe('Queue:', function () {
                 .push(i3, 'value');
 
             expect(queue.keys).toEqual([undefined, '1', 'name', 'value', 'name', 'value']);
-            expect(queue.stack).toEqual([i0, i1, i2, i2, i3, i3]);
+            expect(queue.items).toEqual([i0, i1, i2, i2, i3, i3]);
         });
 
-        it('dynamic push in stack', function () {
+        it('dynamic push in items', function () {
             queue = new Queue([function () {
                 this.push(listener);
 
-                expect(this.stack).toEqual([listener]);
+                expect(this.items).toEqual([listener]);
             }], true);
 
             expect(listener.calls.count()).toBe(1);
@@ -312,7 +312,7 @@ describe('Queue:', function () {
             expect(listener.calls.mostRecent().object).toBe(ctx);
         });
 
-        it('on "nextItem" event (mould not be called if stack is empty)', function () {
+        it('on "nextItem" event (mould not be called if items is empty)', function () {
             expect(queue.onNextItem(listener)).toBe(queue);
 
             queue.start();
@@ -351,7 +351,7 @@ describe('Queue:', function () {
     });
 
     describe('destroy', function () {
-        it('should destroyed items in stack and in results', function () {
+        it('should destroyed items in items and in results', function () {
             var resp0 = new Response();
             var resp1 = new Response().resolve(resp0);
             var resp2 = new Response().resolve();
@@ -397,7 +397,7 @@ describe('Queue:', function () {
                 expect(listener).not.toHaveBeenCalled();
             });
 
-            it('if stack is empty, queue should be changed state to "resolve"', function () {
+            it('if items is empty, queue should be changed state to "resolve"', function () {
                 expect(new Queue([], true).state).toBe('resolve');
             });
         });
@@ -421,7 +421,7 @@ describe('Queue:', function () {
                 expect(listener.calls.count()).toBe(2);
             });
 
-            it('if stack is empty, queue should be emit "start" and "stop" events', function () {
+            it('if items is empty, queue should be emit "start" and "stop" events', function () {
                 queue
                     .on('start', listener)
                     .on('stop', listener)
@@ -518,7 +518,7 @@ describe('Queue:', function () {
             expect(queue.stop()).toBe(queue);
         });
 
-        it('in stack item', function () {
+        it('in items', function () {
             queue = new Queue([function () {
                 this.stop();
                 return 1;
