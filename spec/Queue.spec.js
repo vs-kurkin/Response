@@ -278,7 +278,7 @@ describe('Queue:', function () {
         expect(queue.strict()).toBe(queue);
         expect(queue.isStrict).toBeTruthy();
         expect(queue.strict(false).isStrict).toBeFalsy();
-        expect(queue.strict(true)).toBeTruthy();
+        expect(queue.strict(true).isStrict).toBeTruthy();
     });
 
     describe('subscribe', function () {
@@ -598,6 +598,21 @@ describe('Queue:', function () {
 
             checkQueue('error', [new Error('error')], [], null, false);
             expect(listener).toHaveBeenCalled();
+        });
+    });
+
+    describe('current item', function () {
+        it('should be previous object', function () {
+            var r1 = Response.resolve();
+            var r2 = Response.resolve();
+
+            new Queue([r1, function () {
+                expect(this.item).toBe(r1);
+
+                return r2;
+            }, function () {
+                expect(this.item).toBe(r2);
+            }], true);
         });
     });
 });
