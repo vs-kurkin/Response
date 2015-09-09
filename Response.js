@@ -318,16 +318,14 @@ State.prototype.setState = function (state, data) {
     var _hasData = arguments.length > 1;
     var _data = _hasData ? wrapIfArray(data) : [];
 
-    if (_state || _hasData) {
+    if (_state) {
+        changeState(this, state, _data);
+    } else if (_hasData) {
         this.stateData = _data;
-
+    
         if (this._event) {
             this._event.data = _data;
         }
-    }
-
-    if (_state) {
-        changeState(this, state, _data);
     }
 
     return this;
@@ -1347,7 +1345,9 @@ function toError(value) {
  */
 function changeState(object, state, data) {
     object.stopEmit(object.state);
+
     object.state = state;
+    object.stateData = data;
 
     emit(object, state, data);
 
