@@ -316,7 +316,7 @@ State.prototype.is = function (state) {
 State.prototype.setState = function (state, data) {
     var _state = this.state !== state;
     var _hasData = arguments.length > 1;
-    var _data = _hasData ? wrapIfArray(data) : [];
+    var _data = _hasData ? wrapIfNotArray(data) : [];
 
     if (_state || _hasData) {
         this.stateData = _data;
@@ -1304,11 +1304,11 @@ function isItemRejected(item) {
 }
 
 /**
- *
+ * В случае, если аргумент не является массивом, то функция оборачивает его в массив
  * @param {*|Array} object
  * @returns {Array}
  */
-function wrapIfArray(object) {
+function wrapIfNotArray(object) {
     return isArray(object) ? object : [object];
 }
 
