@@ -1,7 +1,7 @@
 {
     "name": "Response",
     "author": "Vladislav Kurkin <b-vladi@cs-console.ru> (https://github.com/B-Vladi)",
-    "version": "0.0.35",
+    "version": "0.1.0-rc1",
     "main": "Response.js",
     "license": "MIT",
     "repository": {
@@ -12,7 +12,7 @@
         "node": "*"
     },
     "dependencies": {
-        "EventEmitter": "B-Vladi/EventEmitter.git#0.2.5"
+        "EventEmitter": "B-Vladi/EventEmitter.git#0.2.6"
     },
     "devDependencies": {
         "jasmine": "2.0.1",
@@ -21,14 +21,13 @@
         "karma-jasmine": "^0.2.3",
         "karma-browserify": "^2.0.0",
         "karma-chrome-launcher": "^0.1.5",
-        "karma-phantomjs-launcher": "^0.1.4",
-        "supertest": "^0.15.0"
+        "karma-phantomjs-launcher": "^0.1.4"
     },
     "bugs": {
         "email": "b-vladi@cs-console.ru",
         "url": "https://github.com/B-Vladi/Response/issues"
     },
     "scripts": {
-        "test": "echo '>> Starting PhantomJS tests ======' && ./node_modules/karma/bin/karma start; echo '>> Starting node tests ======' && jasmine"
+        "test": "echo '>> Starting PhantomJS tests ======' && npm install && ./node_modules/karma/bin/karma start; echo '>> Starting node tests ======' && jasmine"
     }
 }

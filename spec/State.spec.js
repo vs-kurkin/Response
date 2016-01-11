@@ -1,6 +1,6 @@
 describe('State:', function () {
     var EE = require('EventEmitter');
-    var Response = require('../Response');
+    var Response = require('../Response.js');
     var State = Response.State;
     var state;
     var Const;
@@ -12,10 +12,7 @@ describe('State:', function () {
         expect(state.data).toEqual({});
         expect(state.stateData).toEqual([]);
         expect(state.isState).toBeTruthy();
-        expect(state.keys).toBeNull();
-
-        expect(state.EVENT_CHANGE_STATE).toBe('changeState');
-        expect(state.STATE_ERROR).toBe('error');
+        expect(state.keys).toEqual([]);
     }
 
     function checkInherit() {
@@ -41,6 +38,9 @@ describe('State:', function () {
 
     it('check exports', function () {
         expect(typeof State).toBe('function');
+
+        expect(State.EVENT_CHANGE_STATE).toBe('changeState');
+        expect(State.STATE_ERROR).toBe('error');
     });
 
     describe('check constructor:', function () {
@@ -84,25 +84,6 @@ describe('State:', function () {
         describe('constructor:', function () {
             describe('prototype', function () {
                 it('inherit', checkPrototype);
-
-                it('changed constants', function () {
-                    Const.prototype.EVENT_CHANGE_STATE = 'test1';
-                    Const.prototype.STATE_ERROR = 'test2';
-
-                    var lOne = jasmine.createSpy();
-                    var lTwo = jasmine.createSpy();
-
-                    new Const()
-                        .on('test1', lOne)
-                        .on('test1', function () {
-                            throw 'error';
-                        })
-                        .onState('test2', lTwo)
-                        .setState(1);
-
-                    expect(lOne).toHaveBeenCalled();
-                    expect(lTwo).toHaveBeenCalled();
-                });
 
                 describe('change', function () {
                     it('state', function () {
@@ -166,12 +147,12 @@ describe('State:', function () {
 
     it('throw error in listener should be set state "error"', function () {
         state
-            .on('error', listener)
-            .on('event', function () {
+            .onState('error', listener)
+            .onState('event', function () {
                 throw 'err';
             });
 
-        state.emit('event');
+        state.setState('event');
 
         expect(state.state).toBe('error');
         expect(listener).toHaveBeenCalledWith(new Error('err'));
@@ -286,7 +267,7 @@ describe('State:', function () {
             describe('on change any state', function () {
                 it('subscription on event', function () {
                     state
-                        .on(state.EVENT_CHANGE_STATE, listener)
+                        .on(State.EVENT_CHANGE_STATE, listener)
                         .setState(1);
 
                     expect(listener).toHaveBeenCalledWith(1);
@@ -484,6 +465,51 @@ describe('State:', function () {
         });
     });
 
+    describe('getStateData', function () {
+        it('should returns undefined if a data of state  are missing', function () {
+            expect(state.getStateData(1)).toBeUndefined();
+        });
+
+        it('should returns undefined if key is not defined', function () {
+            expect(state
+                .setState('state', ['data'])
+                .setKeys([1])
+                .getStateData(2))
+                .toBeUndefined();
+        });
+
+        it('should be returns undefined if keys is empty', function () {
+            expect(state
+                .setState('state', ['data'])
+                .getStateData(1))
+                .toBeUndefined();
+        });
+
+        it('key should be strict equal', function () {
+            expect(state
+                .setState('state', ['data'])
+                .setKeys([1])
+                .getStateData('1'))
+                .toBeUndefined();
+        });
+
+        it('must return data', function () {
+            expect(state
+                .setState('state', ['data'])
+                .setKeys(['1'])
+                .getStateData('1'))
+                .toBe('data');
+        });
+
+        it('must return latest value', function () {
+            expect(state
+                .setState('state', ['data1', 'data2'])
+                .setKeys(['1', '1'])
+                .getStateData('1'))
+                .toBe('data2');
+        });
+    });
+
     it('destroy', function () {
         state
             .on(1, function () {
@@ -497,29 +523,24 @@ describe('State:', function () {
 
         for (var property in state) {
             if (state.hasOwnProperty(property)) {
-                expect(state[property]).toBeNull();
+                expect(state[property]).toBeUndefined();
             }
         }
     });
 
-    describe('bind', function () {
-        it('default context', function () {
-            var callback = state.bind(listener);
+    it('recursive destroy', function () {
+        var resp = new Response().resolve();
+        var property;
 
-            expect(callback).not.toBe(listener);
+        state
+            .setState(1, [resp])
+            .destroy(true);
 
-            callback();
-
-            expect(listener.calls.mostRecent().object).toBe(state);
-        });
-
-        it('custom context', function () {
-            var ctx = {};
-
-            state.bind(listener, ctx)();
-
-            expect(listener.calls.mostRecent().object).toBe(ctx);
-        });
+        for (property in resp) {
+            if (resp.hasOwnProperty(property)) {
+                expect(resp[property]).toBeUndefined();
+            }
+        }
     });
 
     describe('invoke', function () {
@@ -567,11 +588,17 @@ describe('State:', function () {
 
             expect(listener.calls.mostRecent().object).toBe(ctx);
         });
+
+        it('Should remain in the same state if no error', function () {
+            state.setState(1).invoke(listener);
+
+            expect(state.state).toBe(1);
+        })
     });
 
     describe('toObject', function () {
-        it('should be returns undefined if no results', function () {
-            expect(state.toObject()).toEqual(undefined);
+        it('should be returns empty object if no results', function () {
+            expect(state.toObject()).toEqual({});
         });
 
         it('should be returns empty object if have keys and no results', function () {
@@ -580,7 +607,7 @@ describe('State:', function () {
         });
 
         it('should be returns empty object if no keys and have results', function () {
-            expect(state.setState(1, [null, 2]).toObject()).toEqual([null, 2]);
+            expect(state.setState(1, [null, 2]).toObject()).toEqual({});
         });
 
         it('should be returns object if have keys and results', function () {
@@ -647,6 +674,15 @@ describe('State:', function () {
                     first: false
                 });
         });
+
+        it('should return latest value if there are duplicate keys', function () {
+            expect(state
+                .setState(1, [1, 2])
+                .toObject(['1', '1']))
+                .toEqual({
+                    1: 2
+                });
+        });
     });
 
     describe('setKeys', function () {
@@ -656,51 +692,18 @@ describe('State:', function () {
             expect(state.setKeys(keys).keys).toBe(keys);
         });
 
-        it('should set null in keys property if the argument is not a array', function () {
-            expect(state.setKeys({}).keys).toBe(null);
-            expect(state.setKeys(function(){}).keys).toBe(null);
-            expect(state.setKeys(undefined).keys).toBe(null);
-            expect(state.setKeys(1).keys).toBe(null);
-            expect(state.setKeys().keys).toBe(null);
+        it('should set an empty array in keys property if the argument is not a array', function () {
+            expect(state.setKeys({}).keys).toEqual([]);
+            expect(state.setKeys(function(){}).keys).toEqual([]);
+            expect(state.setKeys(undefined).keys).toEqual([]);
+            expect(state.setKeys(1).keys).toEqual([]);
+            expect(state.setKeys().keys).toEqual([]);
         });
     });
 
-    it('getByIndex', function () {
-        var data = {};
-
-        expect(state.getByIndex()).toBeUndefined();
-        expect(state.getByIndex(0)).toBeUndefined();
-        expect(state.getByIndex(1)).toBeUndefined();
-
-        state.setState(1, [data]);
-
-        expect(state.getByIndex(0)).toBe(data);
-        expect(state.getByIndex('0')).toBe(data);
-        expect(state.getByIndex(1)).toBeUndefined();
-        expect(state.getByIndex({})).toBeUndefined();
-        expect(state.getByIndex()).toBeUndefined();
-    });
-
-    it('getByKey', function () {
-        var data = {};
-        var key;
-
-        expect(state.getByKey()).toBeUndefined();
-        expect(state.setKeys([]).getByKey()).toBeUndefined();
-        expect(state.setKeys([]).getByKey(0)).toBeUndefined();
-
-        state.setState(1, [data]);
-
-        expect(state.setKeys(['first']).getByKey('first')).toBe(data);
-        expect(state.setKeys([0]).getByKey(0)).toBe(data);
-        expect(state.setKeys([key = {}]).getByKey(key)).toBe(data);
-        expect(state.setKeys([key = []]).getByKey(key)).toBe(data);
-        expect(state.setKeys([key = function () {}]).getByKey(key)).toBe(data);
-    });
-
     it('toJSON', function () {
-        expect(new State().toJSON()).toBeUndefined();
-        expect(new State().setState(1, [1]).toJSON()).toEqual(1);
+        expect(new State().toJSON()).toEqual({});
+        expect(new State().setState(1, [1]).toJSON()).toEqual({});
         expect(new State().setKeys([1]).toJSON()).toEqual({});
         expect(new State().setState(1, null).setKeys([1]).toJSON()).toEqual({1:null});
     });

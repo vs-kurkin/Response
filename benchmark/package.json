@@ -1,0 +1,12 @@
+{
+    "name" : "Response-benchmark",
+    "version" : "0.0.36",
+    "dependencies": {
+        "Response": "git://github.com/B-Vladi/Response.git",
+        "benchmark" : "1.0.0"
+    },
+    "scripts": {
+        "test": "node start.js"
+    },
+    "private" : true
+}
