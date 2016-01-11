@@ -5,68 +5,182 @@
 
 var EventEmitter = require('EventEmitter');
 var toString = Object.prototype.toString;
-var nativeEmit = EventEmitter.prototype.emit;
+
+/**
+ * Constants
+ */
+var EVENT_CHANGE_STATE = 'changeState';
+var STATE_ERROR = 'error';
+
+var STATE_PENDING = 'pending';
+var STATE_RESOLVED = 'resolve';
+var STATE_REJECTED = 'error';
+var EVENT_PROGRESS = 'progress';
+
+var EVENT_START = 'start';
+var EVENT_STOP = 'stop';
+var EVENT_NEXT_ITEM = 'nextItem';
+
+/**
+ * @param {Object} proto
+ * @param {Function} constructor
+ * @type {Function}
+ */
+var defineConstructor = isFunction(Object.defineProperty) ? function (proto, constructor) {
+    Object.defineProperty(proto, 'constructor', {
+        value: constructor,
+        enumerable: false,
+        writable: true,
+        configurable: true
+    });
+} : function (proto, constructor) {
+    proto.constructor = constructor;
+};
+
+/**
+ * @function
+ * @param {*} object
+ */
+var getKeys = isFunction(Object.keys) ? Object.keys : function keys(object) {
+    var keys = [];
+
+    for (var name in object) {
+        if (object.hasOwnProperty(name)) {
+            keys.push(name);
+        }
+    }
+
+    return keys;
+};
+
+/**
+ * @function
+ * @param {*} object
+ */
+var isArray = isFunction(Array.isArray) ? Array.isArray : function isArray(object) {
+    return object && (toString.call(object) === '[object Array]');
+};
 
 /**
  *
- * @param {*} [state] Начальное состояние объекта.
+ * @param {Function} [callback]
+ * @param {Object} [context]
+ * @returns {Function}
+ * @type {Function}
+ */
+var bind = isFunction(Function.prototype.bind) ? function (callback, context) {
+    return callback && callback.bind(context);
+} : function (callback, context) {
+    return callback && function () {
+            var index = 0;
+            var length = arguments.length;
+            var args = new Array(length);
+
+            while (index < length) {
+                args[index] = arguments[index++];
+            }
+
+            return callback.apply(context, args);
+        }
+};
+
+/**
+ * Конструктор объекта "Состояние".
+ * @param {*} [state=null] Значение начального состояние объекта.
  * @returns {State}
  * @constructor
  * @extends {EventEmitter}
+ * @see https://ru.wikipedia.org/wiki/Состояние_(шаблон_проектирования)
  */
 function State(state) {
     EventEmitter.call(this);
 
     this.state = arguments.length ? state : this.state;
+    this.stateData = [];
     this.data = this.data || {};
-    this.stateData = new Array(0);
-    this.keys = null;
+    this.keys = [];
 
     return this;
 }
 
 /**
- * Проверяет, я вляется ли объект экземпляром конструктора {@link State}.
+ * Событие изменения состояния.
+ * В обработчики события передается единственный аргумент - новое значение состояния.
+ * @const
+ * @default 'changeState'
+ * @type {String}
+ */
+State.EVENT_CHANGE_STATE = EVENT_CHANGE_STATE;
+
+/**
+ * Встроенное состояние ошибки.
+ * Объект {@link State} автоматически переходит в состояние 'error' в случаях, когда функция,
+ * вызываемая методами {@link State.invoke} и {@link State#invoke}, выбросила исключение,
+ * либо обработчик события (или состояния) выбросил исключение.
+ * @const
+ * @default 'error'
+ * @type {String}
+ */
+State.STATE_ERROR = STATE_ERROR;
+
+/**
+ * Проверяет, я вляется ли объект экземпляром конструктора {@link State}, либо наследует от него.
  * @param {Object} [object] Проверяемый объект.
- * @returns {Boolean}
+ * @returns {Boolean} Результат проверки.
  * @static
  */
 State.isState = function (object) {
-    return object != null && ((object instanceof State) || object.isState);
+    return object != null && object.isState;
 };
 
 /**
- * Создает объект, который наследует от объекта {@link State}.
- * @function
+ * Создает объект, который наследует от объекта {@link State.prototype}.
+ * Метод может использоваться как для создания
+ * Если метод используется для создания наследования (передан конструктор), будут выполнены следующие действия:
+ *  - в созданный объект будут скопированы свойства из this.prototype
+ *  - в созданном объекте будет создано свойство constructor с ссылкой на переданый конструктор
+ *  - созданный объект будет сохранен в свойстве constructor.prototype
+ * Создание объекта происходит без вызова конструктора.
+ * @param {Function} [constructor] Конструктор, экземпляры которого должны наследовать от созданного объекта.
+ * @param {Boolean} [copyStatic=false] Флаг, указывающий на необходимость копирования собственных свойст из текущего контекста в объект constructor.
  * @static
- * @returns {Object}
+ * @returns {Object} Созданный объект.
  * @example
  * function Const () {}
  *
- * Const.prototype = State.create(Const);
+ * State.create(Const);
  *
  * new Const() instanceof State; // true
  * Const.prototype.constructor === Const; // true
  */
-State.create = create;
+State.create = function (constructor, copyStatic) {
+    if (constructor && copyStatic === true) {
+        copy(this, constructor);
+    }
 
-State.prototype = create.call(EventEmitter, State);
+    return inherits(this, constructor);
+};
 
 /**
- * Событие изменения состояния.
- * @default 'changeState'
- * @type {String}
+ * Статический аналог метода {@link State#invoke}.
+ * @static
+ * @param {Function} fnc Функция, которая будет выполнена методом {@link State#invoke} в контексте созданного объекта.
+ * @param {Array} [args] Аргументы, с которыми будет выполнена функция.
+ * @param {Object} [context={State}] Контекст выполнения функции.
+ * @returns {State} Созданный объект {@link State}, в контексте которого вызывается {@link State#invoke}.
  */
-State.prototype.EVENT_CHANGE_STATE = 'changeState';
+State.invoke = function (fnc, args, context) {
+    var state = new this();
+
+    state.invoke(fnc, args, context);
+
+    return state;
+};
+
+State.prototype = State.create.call(EventEmitter, State);
 
 /**
- * Событие изменения состояния.
- * @default 'changeState'
- * @type {String}
- */
-State.prototype.STATE_ERROR = 'error';
-
-/**
+ * Свойство, указывающее на то, что объект наследует от {@link State}.
  * @type {Boolean}
  * @const
  * @default true
@@ -76,26 +190,27 @@ State.prototype.isState = true;
 /**
  * Текущее состояние объекта.
  * @readonly
- * @type {String}
+ * @type {String|*}
+ * @default null
  */
 State.prototype.state = null;
 
 /**
- *
+ * Ключи для данных состояния {@link State#stateData}.
  * @type {Array}
- * @default null
+ * @default []
  */
 State.prototype.keys = null;
 
 /**
- *
- * @type {*}
- * @default null
+ * Пространство имен для пользовательских данных.
+ * @type {Object}
+ * @default {}
  */
 State.prototype.data = null;
 
 /**
- * Данные для обработчиков стостояния.
+ * Данные стостояния. Элементы массива передаются аргументами в обработчики состояния.
  * @readonly
  * @type {Array}
  * @default []
@@ -103,80 +218,65 @@ State.prototype.data = null;
 State.prototype.stateData = null;
 
 /**
- *
- * @param {Function} method
- * @param {Array} [args]
- * @param {*} [context=this]
+ * Безопасный вызов функции.
+ * Если функция выбросит исключение, объект {@link State} перейдет в состояние {@link State.STATE_ERROR}.
+ * @param {Function} fnc Выполняемая функция.
+ * @param {Array} [args=[]] Аргументы функции.
+ * @param {*} [context=this] Контекст выполнения функции.
+ * @returns {*|Error} Результат, который вернет выполняемая функция, либо объект ошибки, если функция выбросила исключение.
  */
-State.prototype.invoke = function (method, args, context) {
+State.prototype.invoke = function (fnc, args, context) {
+    var _args = isArray(args) ? args : [];
     var ctx = context == null ? this : context;
-    var _args = (args && !isNaN(args.length)) ? args : new Array(0);
-    var r;
+    var result;
 
     try {
         switch (_args.length) {
             case 0:
-                r = method.call(ctx);
+                result = fnc.call(ctx);
                 break;
             case 1:
-                r = method.call(ctx, _args[0]);
+                result = fnc.call(ctx, _args[0]);
                 break;
             case 2:
-                r = method.call(ctx, _args[0], _args[1]);
+                result = fnc.call(ctx, _args[0], _args[1]);
                 break;
             case 3:
-                r = method.call(ctx, _args[0], _args[1], _args[2]);
+                result = fnc.call(ctx, _args[0], _args[1], _args[2]);
                 break;
             case 4:
-                r = method.call(ctx, _args[0], _args[1], _args[2], _args[3]);
+                result = fnc.call(ctx, _args[0], _args[1], _args[2], _args[3]);
                 break;
             case 5:
-                r = method.call(ctx, _args[0], _args[1], _args[2], _args[3], _args[4]);
+                result = fnc.call(ctx, _args[0], _args[1], _args[2], _args[3], _args[4]);
                 break;
             default:
-                r = method.apply(ctx, _args);
+                result = fnc.apply(ctx, _args);
         }
     } catch (error) {
-        r = toError(error);
+        result = toError(error);
 
         if (this && this.isState) {
-            this.setState(this.STATE_ERROR, r);
+            this.setState(STATE_ERROR, [result]);
         }
     }
 
-    return r;
-};
-
-/**
- * @param {String} type Тип события.
- * @param {...*} [args] Аргументы, передаваемые в обработчик события.
- * @returns {Boolean|Error}
- */
-State.prototype.emit = function (type, args) {
-    if (this._events && this._events[type]) {
-        var index = arguments.length;
-        var data = new Array(index);
-
-        while (index) {
-            data[--index] = arguments[index];
-        }
-
-        return this.invoke(nativeEmit, data);
-    }
-
-    return false;
+    return result;
 };
 
 /**
  * Обнуляет все собственные свойства объекта.
+ * @param {Boolean} [recursive=false] Если флаг был установлен в true, для всех объектов {@link State},
+ *                                    находящихся в {@link State#stateData}, будет вызван метод {@link State#destroy} c
+ *                                    аргументом recursive, равным true.
  * @returns {State}
  */
-State.prototype.destroy = function () {
-    for (var property in this) {
-        if (this.hasOwnProperty(property)) {
-            this[property] = null;
-        }
+State.prototype.destroy = function (recursive) {
+    if (recursive === true) {
+        destroyItems(this.stateData);
     }
+
+    destroy(this);
 
     return this;
 };
@@ -191,13 +291,12 @@ State.prototype.is = function (state) {
 };
 
 /**
- * Изменяет состояние объекта.
- * После изменения состояния, первым будет вызвано событие с именем, соответствуюшим новому значению состояния.
- * Затем событие {@link State#EVENT_CHANGE_STATE}.
- * Если новое состояние не передано или объект уже находится в указаном состоянии, события не будут вызваны.
+ * Изменяет состояние объекта (если объект находится в другом состоянии) с заменой данных состояния.
+ * После изменения состояния, первым будет вызвано событие с именем, равным новому значению состояния.
+ * Если в итоге состояние было изменено, будет вызвано событие {@link State.EVENT_CHANGE_STATE}.
+ * Если объект уже находится в указаном состоянии, события не будут вызваны.
  * @param {*} state Новое сотояние объекта.
- * @param {Array|*} [stateData] Данные, которые будут переданы аргументом в обработчики нового состояния.
- *                         Если был передан массив, аргументами для обработчиков будут его элементы.
+ * @param {Array|*} [data] Новые данные состояния.
  * @returns {State}
  * @example
  * new State()
@@ -214,12 +313,12 @@ State.prototype.is = function (state) {
  *   })
  *   .setState('foo', [true, false]);
  */
-State.prototype.setState = function (state, stateData) {
+State.prototype.setState = function (state, data) {
     var _state = this.state !== state;
     var _hasData = arguments.length > 1;
-    var _data = _hasData ? wrapIfArray(stateData) : new Array(0);
+    var _data = _hasData ? wrapIfNotArray(data) : [];
 
-    if (_state || _hasData || _data.length) {
+    if (_state || _hasData) {
         this.stateData = _data;
 
         if (this._event) {
@@ -252,10 +351,12 @@ State.prototype.setState = function (state, stateData) {
  */
 State.prototype.onState = function (state, listener, context) {
     if (this.state === state) {
-        invoke(this, listener, context);
+        invokeListener(this, listener, context);
     }
 
-    return this.on(state, listener, context);
+    this.on(state, listener, context);
+
+    return this;
 };
 
 /**
@@ -276,7 +377,7 @@ State.prototype.onState = function (state, listener, context) {
  */
 State.prototype.onceState = function (state, listener, context) {
     if (this.state === state) {
-        invoke(this, listener, context);
+        invokeListener(this, listener, context);
     } else {
         this.once(state, listener, context);
     }
@@ -298,29 +399,31 @@ State.prototype.onceState = function (state, listener, context) {
  *   .setState('bar');
  */
 State.prototype.onChangeState = function (listener, context) {
-    return this.on(this.EVENT_CHANGE_STATE, listener, context);
+    this.on(EVENT_CHANGE_STATE, listener, context);
+
+    return this;
 };
 
 /**
- * Отменяет обработку изменения состояния.
- * @param {Function|EventEmitter} [listener] Обработчик, который необходимо отменить.
+ * Удаляет обработчик изменения состояния.
+ * @param {Function|EventEmitter} [listener] Обработчик, который необходимо удалить.
  *                                           Если обработчик не был передан, будут отменены все обработчики.
  * @returns {State}
  */
 State.prototype.offChangeState = function (listener) {
     if (listener) {
-        this.removeListener(this.EVENT_CHANGE_STATE, listener);
+        this.removeListener(EVENT_CHANGE_STATE, listener);
     } else {
-        this.removeAllListeners(this.EVENT_CHANGE_STATE);
+        this.removeAllListeners(EVENT_CHANGE_STATE);
     }
 
     return this;
 };
 
 /**
- *
- * @param {String} key
- * @param {*} [value]
+ * Устанавливает пользовательские данные в пространство имен {@link State#data}.
+ * @param {String} key Ключ, по которому будут доступны данные.
+ * @param {*} [value] Пользовательские данные.
  * @returns {State}
  */
 State.prototype.setData = function (key, value) {
@@ -330,8 +433,9 @@ State.prototype.setData = function (key, value) {
 };
 
 /**
- *
- * @param {String} [key]
+ * Возвращает пользовательские данные из пространства имен {@link State#data} по ключу key,
+ * либо все данные, если ключ не был передан.
+ * @param {String} [key] Ключ пользовательских данных.
  * @returns {*}
  */
 State.prototype.getData = function (key) {
@@ -339,51 +443,11 @@ State.prototype.getData = function (key) {
 };
 
 /**
- *
- * @param {Function} callback
- * @param {Object} [context=this]
- * @throws {Error}
- * @returns {Function}
+ * Возвращает данные состояния, соответствующие ключу key.
+ * @param {*} key Ключ данных состояния, указаный в {@link State#keys}.
+ * @returns {*|undefined} Данные состояния, либо undefined, если данные с таким ключем отсутствуют.
  */
-State.prototype.bind = function (callback, context) {
-    if (typeof callback !== 'function') {
-        throw new Error('Callback is not a function');
-    }
-
-    var _context = context == null ? this : context;
-
-    return function stateCallback() {
-        return callback.apply(_context, arguments);
-    };
-};
-
-/**
- *
- * @param {Array} [keys=this.keys]
- * @returns {Object}
- */
-State.prototype.toObject = function (keys) {
-    var _keys = keys == null ? this.keys : keys;
-
-    if (isArray(_keys)) {
-        return resultsToObject(this.stateData, _keys);
-    } else if (this.stateData.length > 1) {
-        return resultsToArray(this.stateData);
-    } else {
-        return toObject(this.stateData[0]);
-    }
-};
-
-/**
- *
- * @param {*} key
- * @returns {*}
- */
-State.prototype.getByKey = function (key) {
-    if (!isArray(this.keys)) {
-        return;
-    }
-
+State.prototype.getStateData = function (key) {
     var index = this.keys.length;
 
     while (index) {
@@ -394,16 +458,41 @@ State.prototype.getByKey = function (key) {
 };
 
 /**
- *
- * @param {Number} index
- * @returns {*}
+ * Трансформирует объект в хеш данных текущего состояния.
+ * Имена свойств результирующего объекта передаются массивом keys, либо берутся из {@link State#keys}.
+ * Значениями свойств являются данные из {@link State#stateData}.
+ * Если ключи отсутствуют, метод вернет пустой объект.
+ * @param {Array} [keys=this.keys] Ключи для создаваемого объекта.
+ *                                  Порядок ключей должен соответствовать порядку данных в {@link State#stateData}.
+ * @returns {Object} Результат трансформации.
  */
-State.prototype.getByIndex = function (index) {
-    return this.stateData[index];
+State.prototype.toObject = function (keys) {
+    var _keys = isArray(keys) ? keys : this.keys;
+
+    if (_keys.length === 0) {
+        return {};
+    }
+
+    var length = this.stateData.length;
+    var index = 0;
+    var result = {};
+    var key;
+
+    while (index < length) {
+        key = _keys[index];
+
+        if (key != null) {
+            result[key] = toObject(this.stateData[index]);
+        }
+
+        index++;
+    }
+
+    return result;
 };
 
 /**
- *
+ * Трансформирует объект в JSON-объект с использованием метода {@link State#toObject}.
  * @returns {Object}
  */
 State.prototype.toJSON = function () {
@@ -411,34 +500,61 @@ State.prototype.toJSON = function () {
 };
 
 /**
- *
- * @param {Array} [keys=null]
+ * Устанавливает новые ключи для данных состояния.
+ * @param {String[]} [keys=[]] Массив ключей.
  * @returns {State}
  */
 State.prototype.setKeys = function (keys) {
-    this.keys = isArray(keys) ? keys : null;
+    this.keys = isArray(keys) ? keys : [];
 
     return this;
 };
 
 /**
  *
- * @param {Response} [parent]
+ * @param {Response|Promise} [parent]
  * @constructor
  * @requires EventEmitter
  * @extends {State}
  * @returns {Response}
  */
 function Response(parent) {
-    this.State(this.STATE_PENDING);
-    this.callback = this.callback;
+    this.State(STATE_PENDING);
 
-    if (Response.isCompatible(parent)) {
+    if (isCompatible(parent)) {
         this.listen(parent);
     }
 
     return this;
 }
+
+/**
+ * @const
+ * @type {String}
+ * @default 'pending'
+ */
+Response.STATE_PENDING = STATE_PENDING;
+
+/**
+ * @const
+ * @type {String}
+ * @default 'resolve'
+ */
+Response.STATE_RESOLVED = STATE_RESOLVED;
+
+/**
+ * @const
+ * @type {String}
+ * @default 'error'
+ */
+Response.STATE_REJECTED = STATE_ERROR;
+
+/**
+ * @const
+ * @type {String}
+ * @default 'progress'
+ */
+Response.EVENT_PROGRESS = EVENT_PROGRESS;
 
 /**
  * @type {State}
@@ -457,17 +573,7 @@ Response.Queue = Queue;
  * @returns {Boolean}
  */
 Response.isResponse = function (object) {
-    return object != null && ((object instanceof Response) || object.isResponse);
-};
-
-/**
- *
- * @param {*} object
- * @static
- * @returns {Boolean}
- */
-Response.isCompatible = function (object) {
-    return object != null && isFunction(object.then);
+    return object != null && object.isResponse;
 };
 
 /**
@@ -482,7 +588,18 @@ Response.isCompatible = function (object) {
  * @static
  * @returns {Object}
  */
-Response.create = create;
+Response.create = State.create;
+
+/**
+ *
+ * @static
+ * @param {Function} fnc
+ * @param {Array} [args]
+ * @param {Object} [context]
+ * @type {Function}
+ * @returns {Response}
+ */
+Response.invoke = State.invoke;
 
 /**
  * @param {...*} [results]
@@ -497,7 +614,7 @@ Response.resolve = function (results) {
         response.stateData[--index] = arguments[index];
     }
 
-    response.state = response.STATE_RESOLVED;
+    response.state = STATE_RESOLVED;
 
     return response;
 };
@@ -511,26 +628,10 @@ Response.resolve = function (results) {
 Response.reject = function (reason) {
     var response = new Response();
 
-    response.state = response.STATE_REJECTED;
+    response.state = STATE_REJECTED;
     response.stateData[0] = toError(reason);
 
     return response;
-};
-
-/**
- * @param {...*} [args]
- * @static
- * @returns {Queue}
- */
-Response.queue = function (args) {
-    var index = arguments.length;
-    var stack = new Array(index);
-
-    while (index) {
-        stack[--index] = arguments[index];
-    }
-
-    return new Queue(stack);
 };
 
 Response.prototype = State.create(Response);
@@ -540,30 +641,6 @@ Response.prototype = State.create(Response);
  * @type {State}
  */
 Response.prototype.State = State;
-
-/**
- * @type {String}
- * @default 'pending'
- */
-Response.prototype.STATE_PENDING = 'pending';
-
-/**
- * @type {String}
- * @default 'resolve'
- */
-Response.prototype.STATE_RESOLVED = 'resolve';
-
-/**
- * @type {String}
- * @default 'error'
- */
-Response.prototype.STATE_REJECTED = 'error';
-
-/**
- * @type {String}
- * @default 'progress'
- */
-Response.prototype.EVENT_PROGRESS = 'progress';
 
 /**
  * @type {Boolean}
@@ -577,7 +654,7 @@ Response.prototype.isResponse = true;
  * @returns {Response}
  */
 Response.prototype.pending = function () {
-    this.setState(this.STATE_PENDING);
+    this.setState(STATE_PENDING);
 
     return this;
 };
@@ -590,13 +667,13 @@ Response.prototype.resolve = function (results) {
     var index = arguments.length;
 
     if (index || !this.isResolved()) {
-        var data = new Array(index);
+        var data = [];
 
         while (index) {
             data[--index] = arguments[index];
         }
 
-        this.setState(this.STATE_RESOLVED, data);
+        this.setState(STATE_RESOLVED, data);
     }
 
     return this;
@@ -609,7 +686,7 @@ Response.prototype.resolve = function (results) {
  */
 Response.prototype.reject = function (reason) {
     if (arguments.length || !this.isRejected()) {
-        this.setState(this.STATE_REJECTED, toError(reason));
+        this.setState(STATE_REJECTED, [toError(reason)]);
     }
 
     return this;
@@ -621,8 +698,8 @@ Response.prototype.reject = function (reason) {
  * @returns {Response}
  */
 Response.prototype.progress = function (progress) {
-    if (this.isPending() && this._events && this._events[this.EVENT_PROGRESS]) {
-        this.invoke(nativeEmit, new Array(this.EVENT_PROGRESS, progress));
+    if (this.isPending()) {
+        emit(this, EVENT_PROGRESS, [progress]);
     }
 
     return this;
@@ -634,10 +711,10 @@ Response.prototype.progress = function (progress) {
  */
 Response.prototype.isPending = function () {
     return !(
-    this.hasOwnProperty('state') &&
-    this.state === null ||
-    this.state === this.STATE_RESOLVED ||
-    this.state === this.STATE_REJECTED
+        this.hasOwnProperty('state') &&
+        this.state == null ||
+        this.state === STATE_RESOLVED ||
+        this.state === STATE_REJECTED
     );
 };
 
@@ -646,7 +723,7 @@ Response.prototype.isPending = function () {
  * @returns {Boolean}
  */
 Response.prototype.isResolved = function () {
-    return this.state === this.STATE_RESOLVED;
+    return this.state === STATE_RESOLVED;
 };
 
 /**
@@ -654,7 +731,7 @@ Response.prototype.isResolved = function () {
  * @returns {Boolean}
  */
 Response.prototype.isRejected = function () {
-    return this.state === this.STATE_REJECTED;
+    return this.state === STATE_REJECTED;
 };
 
 /**
@@ -667,15 +744,15 @@ Response.prototype.isRejected = function () {
  */
 Response.prototype.then = function (onResolve, onReject, onProgress, context) {
     if (onResolve != null) {
-        this.onceState(this.STATE_RESOLVED, onResolve, context);
+        this.onceState(STATE_RESOLVED, onResolve, context);
     }
 
     if (onReject != null) {
-        this.onceState(this.STATE_REJECTED, onReject, context);
+        this.onceState(STATE_REJECTED, onReject, context);
     }
 
     if (onProgress != null) {
-        this.on(this.EVENT_PROGRESS, onProgress, context);
+        this.on(EVENT_PROGRESS, onProgress, context);
     }
 
     return this;
@@ -687,10 +764,16 @@ Response.prototype.then = function (onResolve, onReject, onProgress, context) {
  * @param {Object} [context=this]
  * @returns {Response}
  */
-Response.prototype.always = function (listener, context) {
-    this
-        .onceState(this.STATE_RESOLVED, listener, context)
-        .onceState(this.STATE_REJECTED, listener, context);
+Response.prototype.any = function (listener, context) {
+    if (this.isResolved() || this.isRejected()) {
+        invokeListener(this, listener, context);
+    } else {
+        this.then(onAny, onAny, null, {
+            response: this,
+            listener: listener,
+            context: context
+        });
+    }
 
     return this;
 };
@@ -702,7 +785,7 @@ Response.prototype.always = function (listener, context) {
  * @returns {Response}
  */
 Response.prototype.onPending = function (listener, context) {
-    this.onceState(this.STATE_PENDING, listener, context);
+    this.onceState(STATE_PENDING, listener, context);
 
     return this;
 };
@@ -714,7 +797,7 @@ Response.prototype.onPending = function (listener, context) {
  * @returns {Response}
  */
 Response.prototype.onResolve = function (listener, context) {
-    this.onceState(this.STATE_RESOLVED, listener, context);
+    this.onceState(STATE_RESOLVED, listener, context);
 
     return this;
 };
@@ -726,7 +809,7 @@ Response.prototype.onResolve = function (listener, context) {
  * @returns {Response}
  */
 Response.prototype.onReject = function (listener, context) {
-    this.onceState(this.STATE_REJECTED, listener, context);
+    this.onceState(STATE_REJECTED, listener, context);
 
     return this;
 };
@@ -738,25 +821,27 @@ Response.prototype.onReject = function (listener, context) {
  * @returns {Response}
  */
 Response.prototype.onProgress = function (listener, context) {
-    this.on(this.EVENT_PROGRESS, listener, context);
+    this.on(EVENT_PROGRESS, listener, context);
 
     return this;
 };
 
 /**
  *
- * @param {Response} parent
+ * @param {Response|Deferred} object
  * @throws {Error} Бросает исключение, если parent равен this.
  * @returns {Response}
  * @this {Response}
  */
-Response.prototype.notify = function (parent) {
-    if (parent) {
-        if (parent === this) {
+Response.prototype.notify = function (object) {
+    if (object) {
+        if (object === this) {
             throw new Error('Can\'t notify itself');
         }
 
-        this.then(parent.resolve, parent.reject, parent.progress, parent);
+        var onProgress = Response.isResponse(object) ? object.progress : object.notify;
+
+        this.then(object.resolve, object.reject, onProgress, object);
     }
 
     return this;
@@ -775,13 +860,13 @@ Response.prototype.notify = function (parent) {
  *     resolve('success');
  *   }));
  *
- * @param {Response|Object} response
+ * @param {Response|Promise} object
  * @this {Response}
- * @throws {Error} Бросает исключение, если response равен this.
+ * @throws {Error} Бросает исключение, если object равен this.
  * @returns {Response}
  */
-Response.prototype.listen = function (response) {
-    if (response === this) {
+Response.prototype.listen = function (object) {
+    if (object === this) {
         throw new Error('Cannot listen on itself');
     }
 
@@ -789,7 +874,7 @@ Response.prototype.listen = function (response) {
         this.pending();
     }
 
-    response.then(this.resolve, this.reject, this.progress, this);
+    then(object, this.resolve, this.reject, this.progress, this);
 
     return this;
 };
@@ -799,55 +884,35 @@ Response.prototype.listen = function (response) {
  * @returns {Response}
  */
 Response.prototype.done = function () {
-    return this.always(this.destroy);
+    return this.any(this.destroy);
 };
 
 /**
  *
- * @param {Error|*} [error]
- * @param {...*} [results]
- */
-Response.prototype.callback = function defaultResponseCallback(error, results) {
-    var index = arguments.length;
-    var args;
-
-    if (error == null) {
-        if (index <= 1) {
-            this.resolve();
-        } else {
-            args = new Array(--index);
-
-            while (index) {
-                args[--index] = arguments[index + 1];
-            }
-
-            this.setState(this.STATE_RESOLVED, args);
-        }
-    } else {
-        this.reject(error);
-    }
-};
-
-/**
- * @example
- * var Response = require('Response');
- * var r = new Response()
- *   .makeCallback(function (data, textStatus, jqXHR) {
- *     if (data && data.error) {
- *        this.reject(data.error);
- *     } else {
- *        this.resolve(data.result);
- *     }
- *   });
- *
- * $.getJSON('ajax/test.json', r.callback);
- *
- * @param {Function} [callback=this.callback]
- * @param {Object} [context=this]
  * @returns {Response}
  */
-Response.prototype.makeCallback = function (callback, context) {
-    this.callback = this.bind(isFunction(callback) ? callback : this.callback, context);
+Response.prototype.fork = function () {
+    return new Response(this);
+};
+
+/**
+ *
+ * @param {Function} listener
+ * @param {*} [context=this]
+ * @returns {Response}
+ */
+Response.prototype.map = function (listener, context) {
+    var _context = {
+        response: this,
+        listener: listener,
+        context: context
+    };
+
+    if(this.isResolved()) {
+        onMap.call(_context);
+    } else {
+        this.onResolve(onMap, _context);
+    }
 
     return this;
 };
@@ -871,61 +936,102 @@ Response.prototype.makeCallback = function (callback, context) {
  *   .setKeys(['foo', 'bar']) // sets a default keys
  *   .getResult('bar') // 2, returns result on a default key
  *
- * @param {String|Number} [key]
+ * @param {String|Number|String[]|Number[]} [key]
  * @returns {*}
  * @throws {Error}
  */
 Response.prototype.getResult = function (key) {
-    if (this.isRejected()) {
-        return undefined;
+    if (this.isResolved()) {
+        switch (typeof key) {
+            case 'string':
+            case 'number':
+                return toObject(this.getStateData(key));
+                break;
+            default:
+                var keys = isArray(key) ? key : this.keys;
+
+                return keys.length ? this.toObject(keys) : toObject(this.stateData[0]);
+                break;
+        }
     }
 
-    switch (getType(key)) {
-        case 'String':
-        case 'Number':
-            return toObject(this.getByKey(key));
-            break;
-        default:
-            return this.toObject(key);
-            break;
-    }
 };
 
 /**
  *
- * @returns {Error|null}
+ * @returns {Error|undefined}
  */
 Response.prototype.getReason = function () {
-    return this.isRejected() ? this.stateData[0] : null;
+    if (this.isRejected()) {
+        return this.stateData[0];
+    }
 };
 
 /**
  *
- * @param {Array} [stack=[]]
+ * @param {Response[]|Promise[]|Function[]|*[]} [items=[]]
  * @param {Boolean} [start=false]
  * @constructor
  * @extends {Response}
  * @returns {Queue}
  */
-function Queue(stack, start) {
+function Queue(items, start) {
     this.Response();
 
-    this.stack = isArray(stack) ? stack : new Array(0);
+    this.items = isArray(items) ? items : [];
     this.item = null;
+    this.isStarted = false;
     this.isStrict = this.isStrict;
-    this.isStarted = this.isStarted;
     this
-        .onState(this.STATE_RESOLVED, this.stop)
-        .onState(this.STATE_REJECTED, this.stop);
+        .onState(STATE_RESOLVED, this.stop)
+        .onState(STATE_REJECTED, this.stop);
 
-    if (getType(start) === 'Boolean' ? start.valueOf() : false) {
+    this.keys.length = this.items.length;
+
+    if (typeof start === 'boolean' && start) {
         this.start();
     }
 
     return this;
 }
 
-Queue.create = create;
+/**
+ * @const
+ * @default 'start'
+ * @type {String}
+ */
+Queue.EVENT_START = EVENT_START;
+
+/**
+ * @const
+ * @default 'stop'
+ * @type {String}
+ */
+Queue.EVENT_STOP = EVENT_STOP;
+
+/**
+ * @const
+ * @default 'nextItem'
+ * @type {String}
+ */
+Queue.EVENT_NEXT_ITEM = EVENT_NEXT_ITEM;
+
+/**
+ *
+ * @function
+ */
+Queue.create = State.create;
+
+/**
+ *
+ * @static
+ * @param {Function} fnc
+ * @param {Array} [args]
+ * @param {Object} [context]
+ * @type {Function}
+ * @returns {Queue}
+ */
+Queue.invoke = State.invoke;
 
 /**
  *
@@ -933,30 +1039,12 @@ Queue.create = create;
  * @returns {Boolean}
  */
 Queue.isQueue = function (object) {
-    return object != null && ((object instanceof Queue) || object.isQueue);
+    return object != null && object.isQueue;
 };
 
 Queue.prototype = Response.create(Queue);
 
 Queue.prototype.Response = Response;
-
-/**
- * @default 'start'
- * @type {String}
- */
-Queue.prototype.EVENT_START = 'start';
-
-/**
- * @default 'stop'
- * @type {String}
- */
-Queue.prototype.EVENT_STOP = 'stop';
-
-/**
- * @default 'nextItem'
- * @type {String}
- */
-Queue.prototype.EVENT_NEXT_ITEM = 'nextItem';
 
 /**
  * @type {Boolean}
@@ -984,7 +1072,7 @@ Queue.prototype.isStarted = false;
  * @type {Array}
  * @default null
  */
-Queue.prototype.stack = null;
+Queue.prototype.items = null;
 
 /**
  * @readonly
@@ -998,11 +1086,14 @@ Queue.prototype.item = null;
  * @returns {Queue}
  */
 Queue.prototype.start = function () {
-    if (!this.isStarted && this.isPending()) {
+    if (this.isStarted === false && this.isPending()) {
         this.isStarted = true;
-        this.invoke(nativeEmit, newArray(this.EVENT_START));
 
-        iterate(this);
+        emit(this, EVENT_START, []);
+
+        if (this.isStarted && (!isCompatible(this.item) || isItemRejected(this.item) || isItemResolved(this.item))) {
+            iterate(this);
+        }
     }
 
     return this;
@@ -1016,98 +1107,29 @@ Queue.prototype.stop = function () {
     if (this.isStarted === true) {
         this.isStarted = false;
 
-        if (this.stack.length === 0) {
-            this.item = null;
-        }
+        emit(this, EVENT_STOP, []);
 
-        this.invoke(nativeEmit, new Array(this.EVENT_STOP, this.item));
+        if (this.isResolved() || this.isRejected()) {
+            this.items.length = 0;
+        }
     }
 
     return this;
 };
 
 /**
- * @param {...*} [args]
+ *
+ * @param {Response|Promise|Function|*} item
+ * @param {String} [name=item.name]
  * @returns {Queue}
  */
-Queue.prototype.push = function (args) {
-    var length = arguments.length;
-    var index = 0;
-    var stackLength = this.stack.length;
+Queue.prototype.push = function (item, name) {
+    var keyIndex = this.items.length + this.stateData.length;
 
-    while (index < length) {
-        this.stack[stackLength++] = arguments[index++];
-    }
+    this.keys[keyIndex] = arguments.length > 1 || item == null ? name : item.name;
+    this.items.push(item);
 
     return this;
-};
-
-/**
- *
- * @returns {Object}
- */
-Queue.prototype.getResults = function () {
-    var length = this.stateData.length;
-    var index = 0;
-    var results = {};
-    var key;
-    var item;
-
-    if (this.isRejected()) {
-        return results;
-    }
-
-    while (index < length) {
-        key = this.keys[index];
-
-        if (key != null) {
-            item = this.stateData[index];
-
-            if (Queue.isQueue(item)) {
-                results[key] = item.getResult();
-            } else if (Response.isResponse(item)) {
-                results[key] = item.getResults();
-            } else if (!(item instanceof Error)) {
-                results[key] = item;
-            }
-        }
-
-        index++;
-    }
-
-    return results;
-};
-
-/**
- *
- * @returns {Object}
- */
-Queue.prototype.getReasons = function () {
-    var length = this.stateData.length;
-    var index = 0;
-    var results = {};
-    var key;
-    var item;
-
-    while (index < length) {
-        key = this.keys[index];
-
-        if (key != null) {
-            item = this.stateData[index];
-
-            if (Queue.isQueue(item)) {
-                results[key] = item.getReason();
-            } else if (Response.isResponse(item)) {
-                results[key] = item.getReasons();
-            } else if (item instanceof Error) {
-                results[key] = item;
-            }
-        }
-
-        index++;
-    }
-
-    return results;
 };
 
 /**
@@ -1121,13 +1143,28 @@ Queue.prototype.strict = function (flag) {
 };
 
 /**
+ * @param {Boolean} [recursive=false]
+ * @returns {Queue}
+ */
+Queue.prototype.destroy = function (recursive) {
+    if (recursive === true) {
+        destroyItems(this.items.concat(this.stateData));
+    }
+
+    destroy(this);
+
+    return this;
+};
+
+/**
  *
  * @param {Function|EventEmitter} listener
  * @param {Object} [context=this]
  * @returns {Queue}
  */
 Queue.prototype.onStart = function (listener, context) {
-    this.on(this.EVENT_START, listener, context);
+    this.on(EVENT_START, listener, context);
+
     return this;
 };
 
@@ -1138,7 +1175,8 @@ Queue.prototype.onStart = function (listener, context) {
  * @returns {Queue}
  */
 Queue.prototype.onStop = function (listener, context) {
-    this.on(this.EVENT_STOP, listener, context);
+    this.on(EVENT_STOP, listener, context);
+
     return this;
 };
 
@@ -1149,25 +1187,7 @@ Queue.prototype.onStop = function (listener, context) {
  * @returns {Queue}
  */
 Queue.prototype.onNextItem = function (listener, context) {
-    this.on(this.EVENT_NEXT_ITEM, listener, context);
-    return this;
-};
-
-/**
- *
- * @returns {Queue}
- */
-Queue.prototype.destroyItems = function () {
-    var stack = this.stack.concat(this.stateData);
-    var index = stack.length;
-
-    while (index) {
-        var item = stack[--index];
-
-        if (State.isState(item)) {
-            item.destroy();
-        }
-    }
+    this.on(EVENT_NEXT_ITEM, listener, context);
 
     return this;
 };
@@ -1178,189 +1198,346 @@ Queue.prototype.destroyItems = function () {
  */
 module.exports = Response;
 
+/**
+ *
+ * @param {Queue} queue
+ */
 function iterate(queue) {
-    if (!queue.isStarted) {
-        return;
-    }
-
-    while (queue.stack.length) {
-        if (checkFunction(queue, queue.item) || emitNext(queue, queue.item) || checkResponse(queue, queue.item)) {
+    while (queue.items.length) {
+        if (checkFunction(queue, queue.item) || checkResponse(queue, queue.item)) {
             return;
         }
-
-        queue.stateData.push(queue.stack.shift());
     }
 
-    queue.setState(queue.STATE_RESOLVED, queue.stateData);
+    queue.item = null;
+    queue.setState(STATE_RESOLVED, queue.stateData);
 }
 
-// TODO: fixed "Did not inline State.onceState called from checkResponse (cumulative AST node limit reached)."
+/**
+ *
+ * @param {Queue} queue
+ * @param {*} item
+ * @returns {Boolean}
+ */
 function checkFunction(queue, item) {
-    queue.item = queue.stack[0];
+    var next = queue.items.shift();
+    var results;
 
-    if (isFunction(queue.item)) {
-        var results;
+    if (isFunction(next)) {
+        results = Response.isResponse(item) ? item.stateData : [item];
+        next = queue.invoke.call(queue.isStrict ? queue : null, next, results, queue);
+    }
 
-        if (Response.isResponse(item)) {
-            results = item.state === item.STATE_RESOLVED ? item.stateData : null;
-        } else {
-            results = newArray(item);
-        }
+    if (queue.isPending()) {
+        queue.item = next;
+        queue.stateData.push(next);
 
-        queue.stack[0] = queue.item = queue.invoke.call(queue.isStrict ? queue : null, queue.item, results, queue);
+        emit(queue, EVENT_NEXT_ITEM, [next]);
     }
 
     return !queue.isStarted;
 }
 
-function emitNext(queue, item) {
-    queue.invoke(nativeEmit, new Array(queue.EVENT_NEXT_ITEM, item));
-
-    return !queue.isStarted;
-}
-
+/**
+ *
+ * @param {Queue} queue
+ * @param {*} item
+ * @returns {Boolean|undefined}
+ */
 function checkResponse(queue, item) {
-    if (item && Response.isResponse(item) && item !== queue) {
-        if (item.state === item.STATE_REJECTED && queue.isStrict) {
-            queue.setState(queue.STATE_REJECTED, item.stateData);
+    if (item === queue) {
+        throw new Error('Cannot listen on itself');
+    }
 
-            return true;
-        } else if (item.state !== item.STATE_RESOLVED) {
-            item
-                .onceState(item.STATE_RESOLVED, onEndStackItem, queue)
-                .onceState(item.STATE_REJECTED, queue.isStrict ? queue.reject : onEndStackItem, queue);
-
-            return true;
-        }
+    if (isCompatible(item) && !isItemResolved(item)) {
+        then(item, onResolveItem, onRejectItem, null, queue);
+        return true;
     }
 }
 
-function onEndStackItem() {
-    if (this.isStarted) {
-        this.stateData.push(this.stack.shift());
+/**
+ * @this {Queue}
+ */
+function onResolveItem() {
+    if (Response.isResponse(this.item)) {
+        this.item.off(STATE_REJECTED, onRejectItem);
+    }
 
+    if (this.isStarted) {
         iterate(this);
     }
 }
 
-function getType(object) {
-    return toString.call(object).slice(8, -1);
+/**
+ * @param {Error} error
+ * @this {Queue}
+ */
+function onRejectItem(error) {
+    if (Response.isResponse(this.item)) {
+        this.item.off(STATE_RESOLVED, onResolveItem);
+    }
+
+    if (this.isStrict) {
+        this.item = null;
+        this.reject(error);
+    } else if (this.isStarted) {
+        iterate(this);
+    }
 }
 
-function isArray(object) {
-    return object && (toString.call(object).slice(8, -1) === 'Array');
+/**
+ *
+ * @param {Response|Promise} item
+ * @returns {Boolean}
+ */
+function isItemResolved(item) {
+    return isFunction(item.isResolved) && item.isResolved();
 }
 
-function wrapIfArray(object) {
-    return isArray(object) ? object : newArray(object);
+/**
+ *
+ * @param {Response|Promise} item
+ * @returns {Boolean}
+ */
+function isItemRejected(item) {
+    return isFunction(item.isRejected) && item.isRejected();
 }
 
-function newArray(item) {
-    var _array = new Array(1);
-    _array[0] = item;
-    return _array;
+/**
+ * В случае, если аргумент не является массивом, то функция оборачивает его в массив
+ * @param {*|Array} object
+ * @returns {Array}
+ */
+function wrapIfNotArray(object) {
+    return isArray(object) ? object : [object];
 }
 
+/**
+ *
+ * @param {*} object
+ * @returns {Boolean}
+ */
 function isFunction(object) {
     return typeof object === 'function';
 }
 
-function toError(value) {
-    return value != null && (getType(value) === 'Error' || value instanceof Error) ? value : new Error(value);
+/**
+ *
+ * @param {*} item
+ * @returns {Boolean}
+ */
+function isCompatible(item) {
+    return item != null && isFunction(item.then);
 }
 
-function changeState(object, state, data) {
-    var _events = object._events;
+/**
+ *
+ * @param {*|Error} value
+ * @returns {Error}
+ */
+function toError(value) {
+    return value != null && (value instanceof Error) ? value : new Error(String(value));
+}
 
+/**
+ *
+ * @param {State} object
+ * @param {*} state
+ * @param {Array} data
+ */
+function changeState(object, state, data) {
     object.stopEmit(object.state);
     object.state = state;
 
-    if (_events) {
-        if (_events[state]) {
-            object.invoke(nativeEmit, newArray(state).concat(data));
-        }
+    emit(object, state, data);
 
-        if (_events[object.EVENT_CHANGE_STATE] && object.state === state) {
-            object.invoke(nativeEmit, new Array(object.EVENT_CHANGE_STATE, state));
+    if (object.state === state) {
+        emit(object, EVENT_CHANGE_STATE, [state]);
+    }
+}
+
+/**
+ *
+ * @param {State} item
+ */
+function destroy(item) {
+    var keys = getKeys(item);
+    var index = keys.length;
+
+    while (index) {
+        item[keys[--index]] = undefined;
+    }
+}
+
+/**
+ *
+ * @param {Array} items
+ */
+function destroyItems(items) {
+    var index = items.length;
+    var item;
+
+    while (index) {
+        item = items[--index];
+
+        if (State.isState(item)) {
+            item.destroy(true);
         }
     }
 }
 
-function resultsToObject (data, keys) {
-    var index = 0;
-    var length = data.length;
-    var result = {};
-    var key;
-
-    while (index < length) {
-        key = keys[index];
-
-        if (key != null) {
-            result[key] = toObject(data[index]);
-        }
-
-        index++;
-    }
-
-    return result;
-}
-
-function resultsToArray (data) {
-    var index = 0;
-    var length = data.length;
-    var result = new Array(length);
-
-    while (index < length) {
-        result[index] = toObject(data[index++]);
-    }
-
-    return result;
-}
-
+/**
+ *
+ * @param {Object} item
+ * @returns {Object}
+ */
 function toObject(item) {
     return (item && item.toObject) ? item.toObject() : item;
 }
 
-function invoke(emitter, listener, context) {
+/**
+ *
+ * @param {State} emitter
+ * @param {Function|EventEmitter} listener
+ * @param {*} context
+ * @returns {*}
+ */
+function invokeListener(emitter, listener, context) {
     if (isFunction(listener)) {
         emitter.invoke(listener, emitter.stateData, context);
-    } else if (emitter && isFunction(emitter.then)) {
-        if (emitter._events && emitter._events[emitter.state]) {
-            emitter.invoke(nativeEmit, newArray(emitter.state).concat(emitter.stateData));
-        }
+    } else if (listener && isFunction(listener.emit)) {
+        emit(listener, emitter.state, emitter.stateData);
     } else {
         throw new Error(EventEmitter.LISTENER_TYPE_ERROR);
     }
 }
 
-function Prototype(constructor) {
-    var proto = Prototype.prototype;
-    var name;
-
-    for (name in proto) {
-        if (proto.hasOwnProperty(name) && name !== 'constructor') {
-            this[name] = proto[name];
+/**
+ *
+ * @param {State} emitter
+ * @param {String} type
+ * @param {Array} data
+ */
+function tryEmit(emitter, type, data) {
+    try {
+        switch (data.length) {
+            case 0:
+                emitter.emit(type);
+                break;
+            case 1:
+                emitter.emit(type, data[0]);
+                break;
+            case 2:
+                emitter.emit(type, data[0], data[1]);
+                break;
+            case 3:
+                emitter.emit(type, data[0], data[1], data[2]);
+                break;
+            case 4:
+                emitter.emit(type, data[0], data[1], data[2], data[3]);
+                break;
+            case 5:
+                emitter.emit(type, data[0], data[1], data[2], data[3], data[4]);
+                break;
+            default:
+                emitter.emit.apply(emitter, [type].concat(data));
         }
+    } catch (error) {
+        emitter.setState(STATE_ERROR, [toError(error)]);
     }
-
-    if (constructor) {
-        this.constructor = constructor;
-        constructor.prototype = this;
-    }
-
-    Prototype.prototype = null;
 }
 
-function create(constructor, sp) {
-    if (constructor && sp === true) {
-        for (var name in this) {
-            if (this.hasOwnProperty(name)) {
-                constructor[name] = this[name];
-            }
-        }
+/**
+ *
+ * @param {State} emitter
+ * @param {String} type
+ * @param {Array} data
+ */
+function emit(emitter, type, data) {
+    if (emitter._events && emitter._events[type]) {
+        tryEmit(emitter, type, data);
+    }
+}
+
+/**
+ *
+ * @param {Response|Object} object
+ * @param {Function} [resolve]
+ * @param {Function} [reject]
+ * @param {Function} [progress]
+ * @param {Object} [context]
+ */
+function then(object, resolve, reject, progress, context) {
+    if (object.then.length === 4) {
+        object.then(resolve, reject, progress, context);
+    } else {
+        object.then(bind(resolve, context), bind(reject, context), bind(progress, context));
+    }
+}
+
+/**
+ *
+ */
+function onAny() {
+    var response = this.response;
+
+    response.off(response.isResolved() ? STATE_REJECTED : STATE_RESOLVED, onAny);
+
+    invokeListener(response, this.listener, this.context);
+}
+
+/**
+ *
+ */
+function onMap () {
+    var response = this.response;
+    var result = response.invoke(this.listener, response.stateData, this.context);
+
+    if (response.isResolved()) {
+        response.resolve(result);
+    }
+}
+
+/**
+ *
+ * @param {Object} from
+ * @param {Object} to
+ */
+function copy(from, to) {
+    var properties = Object.keys(from);
+    var index = 0;
+    var name;
+
+    while (name = properties[index++]) {
+        to[name] = from[name];
+    }
+}
+
+/**
+ *
+ * @param {Function} superConst
+ * @param {Function} [constructor]
+ * @returns {Object}
+ */
+function inherits(superConst, constructor) {
+    Prototype.prototype = superConst.prototype;
+
+    var proto = new Prototype();
+
+    if (constructor) {
+        copy(constructor.prototype, proto);
+        defineConstructor(proto, constructor);
+
+        constructor.prototype = proto;
     }
 
-    Prototype.prototype = this.prototype;
+    return proto;
+}
 
-    return new Prototype(constructor);
+/**
+ *
+ * @constructor
+ */
+function Prototype() {
+    Prototype.prototype = null;
 }
