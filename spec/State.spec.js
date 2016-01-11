@@ -607,7 +607,7 @@ describe('State:', function () {
         });
 
         it('should be returns empty object if no keys and have results', function () {
-            expect(state.setState(1, [null, 2]).toObject()).toEqual([null, 2]);
+            expect(state.setState(1, [null, 2]).toObject()).toEqual({});
         });
 
         it('should be returns object if have keys and results', function () {
@@ -702,8 +702,8 @@ describe('State:', function () {
     });
 
     it('toJSON', function () {
-        expect(new State().toJSON()).toBeUndefined();
-        expect(new State().setState(1, [1]).toJSON()).toEqual(1);
+        expect(new State().toJSON()).toEqual({});
+        expect(new State().setState(1, [1]).toJSON()).toEqual({});
         expect(new State().setKeys([1]).toJSON()).toEqual({});
         expect(new State().setState(1, null).setKeys([1]).toJSON()).toEqual({1:null});
     });
