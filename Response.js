@@ -468,15 +468,14 @@ State.prototype.getStateData = function (key) {
  */
 State.prototype.toObject = function (keys) {
     var _keys = isArray(keys) ? keys : this.keys;
-
-    if (_keys.length === 0) {
-        return {};
-    }
-
     var length = this.stateData.length;
     var index = 0;
     var result = {};
     var key;
+
+    if (length === 0 || _keys.length === 0) {
+        return result;
+    }
 
     while (index < length) {
         key = _keys[index];
@@ -942,17 +941,31 @@ Response.prototype.map = function (listener, context) {
  */
 Response.prototype.getResult = function (key) {
     if (this.isResolved()) {
-        switch (typeof key) {
-            case 'string':
-            case 'number':
-                return toObject(this.getStateData(key));
-                break;
-            default:
-                var keys = isArray(key) ? key : this.keys;
-
-                return keys.length ? this.toObject(keys) : toObject(this.stateData[0]);
-                break;
+        if (typeof key === 'string' || typeof key === 'number') {
+            return getResponseResults(this.getStateData(key));
         }
+
+        if (this.keys.length === 0) {
+            return getResponseResults(this.stateData[0]);
+        }
+
+        var _key;
+        var keys = isArray(key) ? key : this.keys;
+        var length = this.stateData.length;
+        var index = 0;
+        var result = {};
+
+        while (index < length) {
+            _key = keys[index];
+
+            if (_key != null) {
+                result[_key] = getResponseResults(this.stateData[index]);
+            }
+
+            index++;
+        }
+
+        return result;
     }
 
 };
@@ -1511,6 +1524,10 @@ function copy(from, to) {
     while (name = properties[index++]) {
         to[name] = from[name];
     }
+}
+
+function getResponseResults(item) {
+    return Response.isResponse(item) ? item.getResult() : toObject(item);
 }
 
 /**
