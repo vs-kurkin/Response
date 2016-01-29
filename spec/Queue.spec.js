@@ -263,13 +263,20 @@ describe('Queue:', function () {
         });
 
         it('dynamic push in items', function () {
-            queue = new Queue([function () {
-                this.push(listener);
-
-                expect(this.items).toEqual([listener]);
-            }], true);
+            queue = new Queue()
+                .push({
+                    name: 'key0'
+                })
+                .push(function key1 () {
+                    this.push(listener, 'key3');
+                })
+                .push({
+                    name: 'key2'
+                })
+                .start();
 
             expect(listener.calls.count()).toBe(1);
+            expect(queue.keys).toEqual(['key0', 'key1', 'key2', 'key3']);
         });
     });
 
