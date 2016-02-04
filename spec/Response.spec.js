@@ -595,8 +595,8 @@ describe('Response:', function () {
     });
 
     describe('getResult', function () {
-        it('should return undefined if not resolved', function () {
-            expect(resp.getResult()).toBeUndefined();
+        it('should return undefined if rejected', function () {
+            expect(resp.setState(1, [2]).getResult()).toBe(2);
             expect(resp.reject('error').getResult()).toBeUndefined();
         });
 

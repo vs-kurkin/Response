@@ -940,33 +940,35 @@ Response.prototype.map = function (listener, context) {
  * @throws {Error}
  */
 Response.prototype.getResult = function (key) {
-    if (this.isResolved()) {
-        if (typeof key === 'string' || typeof key === 'number') {
-            return getResponseResults(this.getStateData(key));
-        }
-
-        if (this.keys.length === 0) {
-            return getResponseResults(this.stateData[0]);
-        }
-
-        var _key;
-        var keys = isArray(key) ? key : this.keys;
-        var length = this.stateData.length;
-        var index = 0;
-        var result = {};
-
-        while (index < length) {
-            _key = keys[index];
-
-            if (_key != null) {
-                result[_key] = getResponseResults(this.stateData[index]);
-            }
-
-            index++;
-        }
-
-        return result;
+    if (this.isRejected()) {
+        return;
     }
+
+    if (typeof key === 'string' || typeof key === 'number') {
+        return getResponseResults(this.getStateData(key));
+    }
+
+    if (this.keys.length === 0) {
+        return getResponseResults(this.stateData[0]);
+    }
+
+    var _key;
+    var keys = isArray(key) ? key : this.keys;
+    var length = this.stateData.length;
+    var index = 0;
+    var result = {};
+
+    while (index < length) {
+        _key = keys[index];
+
+        if (_key != null) {
+            result[_key] = getResponseResults(this.stateData[index]);
+        }
+
+        index++;
+    }
+
+    return result;
 
 };
 

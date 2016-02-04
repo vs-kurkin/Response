@@ -263,13 +263,22 @@ describe('Queue:', function () {
         });
 
         it('dynamic push in items', function () {
-            queue = new Queue([function () {
-                this.push(listener);
+            queue = new Queue()
+                .push({
+                    name: 'key0'
+                })
+                .push(function key1 () {
+                    this.push(listener, 'key3');
+                })
+                .push(function key2 () {
+                    this
+                        .push(listener, 'key4')
+                        .push(listener, 'key5');
+                })
+                .start();
 
-                expect(this.items).toEqual([listener]);
-            }], true);
-
-            expect(listener.calls.count()).toBe(1);
+            expect(listener.calls.count()).toBe(3);
+            expect(queue.keys).toEqual(['key0', 'key1', 'key2', 'key3', 'key4', 'key5']);
         });
     });
 
@@ -615,4 +624,16 @@ describe('Queue:', function () {
             }], true);
         });
     });
+
+    it('getResult should be returns result if state is pending', function () {
+        new Queue()
+            .push(1, 'one')
+            .push(function () {
+                expect(this.getResult('one')).toBe(1);
+                expect(this.getResult()).toEqual({
+                    one: 1
+                });
+            })
+            .start();
+    })
 });
