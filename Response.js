@@ -1250,14 +1250,16 @@ function iterate(queue) {
 function checkFunction(queue, item) {
     var next = queue.items.shift();
     var results;
+    var context;
 
     if (isFunction(next)) {
         results = Response.isResponse(item) ? item.stateData : [item];
-        next = queue.invoke.call(queue.isStrict ? queue : null, next, results, queue);
-    }
+        context = queue.isStrict ? queue : new State();
+        next = queue.invoke.call(context, next, results, queue);
 
-    if (next instanceof Error) {
-        emit(queue, EVENT_ITEM_FAIL, [next]);
+        if (context.is(STATE_ERROR)) {
+            emit(queue, EVENT_ITEM_FAIL, [next]);
+        }
     }
 
     if (queue.isPending()) {

@@ -426,6 +426,18 @@ describe('Queue:', function () {
                 })
                 .start();
         });
+
+        it('on "itemFail" should not fire if function has returned an Error object', function () {
+            queue
+                .push(function () {
+                    return new Error();
+                })
+                .onItemFail(listener)
+                .onResolve(function () {
+                    expect(listener.calls.count()).toBe(0);
+                })
+                .start();
+        });
     });
 
     describe('destroy', function () {
