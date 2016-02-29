@@ -20,7 +20,7 @@ var EVENT_PROGRESS = 'progress';
 var EVENT_START = 'start';
 var EVENT_STOP = 'stop';
 var EVENT_NEXT_ITEM = 'nextItem';
-var EVENT_ITEM_FAIL = 'itemFail';
+var EVENT_ITEM_REJECTED = 'itemRejected';
 
 /**
  * @param {Object} proto
@@ -1214,8 +1214,8 @@ Queue.prototype.onNextItem = function (listener, context) {
  * @param {Object} [context=this]
  * @returns {Queue}
  */
-Queue.prototype.onItemFail = function (listener, context) {
-    this.on(EVENT_ITEM_FAIL, listener, context);
+Queue.prototype.onItemRejected = function (listener, context) {
+    this.on(EVENT_ITEM_REJECTED, listener, context);
 
     return this;
 };
@@ -1258,7 +1258,7 @@ function checkFunction(queue, item) {
         next = queue.invoke.call(context, next, results, queue);
 
         if (context.is(STATE_ERROR)) {
-            emit(queue, EVENT_ITEM_FAIL, [next]);
+            emit(queue, EVENT_ITEM_REJECTED, [next]);
         }
     }
 
@@ -1311,7 +1311,7 @@ function onRejectItem(error) {
         this.item.off(STATE_RESOLVED, onResolveItem);
     }
 
-    emit(this, EVENT_ITEM_FAIL, [error]);
+    emit(this, EVENT_ITEM_REJECTED, [error]);
 
     if (this.isStrict) {
         this.item = null;

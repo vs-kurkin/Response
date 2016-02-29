@@ -358,12 +358,12 @@ describe('Queue:', function () {
             expect(listener.calls.mostRecent().object).toBe(ctx);
         });
 
-        it('on "itemFail" event should not be fired if all items has resolved', function () {
+        it('on "itemRejected" event should not be fired if all items has resolved', function () {
             queue
                 .push(1)
                 .push(function () {})
                 .push((new Response()).resolve())
-                .onItemFail(listener)
+                .onItemRejected(listener)
                 .start();
 
             queue.onResolve(function () {
@@ -371,26 +371,26 @@ describe('Queue:', function () {
             });
         });
 
-        it('on "itemFail" event should be fired with an error as argument', function () {
+        it('on "itemRejected" event should be fired with an error as argument', function () {
             var error = new Error();
 
             queue
                 .push(function () {
                     throw error;
                 })
-                .onItemFail(function (_error) {
+                .onItemRejected(function (_error) {
                     expect(_error).toBe(error);
                 })
                 .start();
         });
 
-        it('on "itemFail" event should fire for rejected Response', function () {
+        it('on "itemRejected" event should fire for rejected Response', function () {
             var resp = new Response();
             resp.reject(new Error());
 
             queue
                 .push(resp)
-                .onItemFail(listener)
+                .onItemRejected(listener)
                 .start();
 
             queue.onResolve(function () {
@@ -398,12 +398,12 @@ describe('Queue:', function () {
             });
         });
 
-        it('on "itemFail" event should fire for rejected function', function () {
+        it('on "itemRejected" event should fire for rejected function', function () {
             queue
                 .push(function () {
                     throw new Error();
                 })
-                .onItemFail(listener)
+                .onItemRejected(listener)
                 .start();
 
             queue.onResolve(function () {
@@ -411,7 +411,7 @@ describe('Queue:', function () {
             });
         });
 
-        it('on "itemFail" event should fire once for each rejected item', function () {
+        it('on "itemRejected" event should fire once for each rejected item', function () {
             function failingFn () {
                 throw new Error();
             }
@@ -420,19 +420,19 @@ describe('Queue:', function () {
                 .push(failingFn)
                 .push((new Response()).reject(new Error()))
                 .push(2)
-                .onItemFail(listener)
+                .onItemRejected(listener)
                 .onResolve(function () {
                     expect(listener.calls.count()).toBe(2);
                 })
                 .start();
         });
 
-        it('on "itemFail" should not fire if function has returned an Error object', function () {
+        it('on "itemRejected" should not fire if function has returned an Error object', function () {
             queue
                 .push(function () {
                     return new Error();
                 })
-                .onItemFail(listener)
+                .onItemRejected(listener)
                 .onResolve(function () {
                     expect(listener.calls.count()).toBe(0);
                 })
