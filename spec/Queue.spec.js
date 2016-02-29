@@ -357,6 +357,75 @@ describe('Queue:', function () {
 
             expect(listener.calls.mostRecent().object).toBe(ctx);
         });
+
+        it('on "itemFail" event should not be fired if all items has resolved', function () {
+            queue
+                .push(1)
+                .push(function () {})
+                .push((new Response()).resolve())
+                .onItemFail(listener)
+                .start();
+
+            queue.onResolve(function () {
+                expect(listener.calls.count()).toBe(0);
+            });
+        });
+
+        it('on "itemFail" event should be fired with an error as argument', function () {
+            var error = new Error();
+
+            queue
+                .push(function () {
+                    throw error;
+                })
+                .onItemFail(function (_error) {
+                    expect(_error).toBe(error);
+                })
+                .start();
+        });
+
+        it('on "itemFail" event should fire for rejected Response', function () {
+            var resp = new Response();
+            resp.reject(new Error());
+
+            queue
+                .push(resp)
+                .onItemFail(listener)
+                .start();
+
+            queue.onResolve(function () {
+                expect(listener.calls.count()).toBe(1);
+            });
+        });
+
+        it('on "itemFail" event should fire for rejected function', function () {
+            queue
+                .push(function () {
+                    throw new Error();
+                })
+                .onItemFail(listener)
+                .start();
+
+            queue.onResolve(function () {
+                expect(listener.calls.count()).toBe(1);
+            });
+        });
+
+        it('on "itemFail" event should fire once for each rejected item', function () {
+            function failingFn () {
+                throw new Error();
+            }
+
+            queue
+                .push(failingFn)
+                .push((new Response()).reject(new Error()))
+                .push(2)
+                .onItemFail(listener)
+                .onResolve(function () {
+                    expect(listener.calls.count()).toBe(2);
+                })
+                .start();
+        });
     });
 
     describe('destroy', function () {

@@ -20,6 +20,7 @@ var EVENT_PROGRESS = 'progress';
 var EVENT_START = 'start';
 var EVENT_STOP = 'stop';
 var EVENT_NEXT_ITEM = 'nextItem';
+var EVENT_ITEM_FAIL = 'itemFail';
 
 /**
  * @param {Object} proto
@@ -1208,6 +1209,18 @@ Queue.prototype.onNextItem = function (listener, context) {
 };
 
 /**
+ * Подписка на ошибку выполнения элемента очереди
+ * @param {Function|EventEmitter} listener
+ * @param {Object} [context=this]
+ * @returns {Queue}
+ */
+Queue.prototype.onItemFail = function (listener, context) {
+    this.on(EVENT_ITEM_FAIL, listener, context);
+
+    return this;
+};
+
+/**
  * Exports: {@link Response}
  * @exports Response
  */
@@ -1241,6 +1254,10 @@ function checkFunction(queue, item) {
     if (isFunction(next)) {
         results = Response.isResponse(item) ? item.stateData : [item];
         next = queue.invoke.call(queue.isStrict ? queue : null, next, results, queue);
+    }
+
+    if (next instanceof Error) {
+        emit(queue, EVENT_ITEM_FAIL, [next]);
     }
 
     if (queue.isPending()) {
@@ -1291,6 +1308,8 @@ function onRejectItem(error) {
     if (Response.isResponse(this.item)) {
         this.item.off(STATE_RESOLVED, onResolveItem);
     }
+
+    emit(this, EVENT_ITEM_FAIL, [error]);
 
     if (this.isStrict) {
         this.item = null;
