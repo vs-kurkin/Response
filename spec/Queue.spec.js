@@ -438,6 +438,44 @@ describe('Queue:', function () {
                 })
                 .start();
         });
+
+        it('on "itemRejected" should be fired before strict queue reject (function)', function () {
+            var onItemRejectedCalled = false;
+            var onRejectedCalled = false;
+
+            queue
+                .strict()
+                .push(function () {
+                    throw new Error();
+                })
+                .onItemRejected(function () {
+                    onItemRejectedCalled = true;
+                    expect(onRejectedCalled).toBe(false);
+                })
+                .onReject(function () {
+                    onRejectedCalled = true;
+                    expect(onItemRejectedCalled).toBe(true);
+                })
+                .start();
+        });
+
+        it('on "itemRejected" should be fired before strict queue reject (Response)', function () {
+            var onItemRejectedCalled = false;
+            var onRejectedCalled = false;
+
+            queue
+                .strict()
+                .push((new Response()).reject(new Error()))
+                .onItemRejected(function () {
+                    onItemRejectedCalled = true;
+                    expect(onRejectedCalled).toBe(false);
+                })
+                .onReject(function () {
+                    onRejectedCalled = true;
+                    expect(onItemRejectedCalled).toBe(true);
+                })
+                .start();
+        });
     });
 
     describe('destroy', function () {

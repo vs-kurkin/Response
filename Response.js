@@ -1254,11 +1254,11 @@ function checkFunction(queue, item) {
 
     if (isFunction(next)) {
         results = Response.isResponse(item) ? item.stateData : [item];
-        context = queue.isStrict ? queue : new State();
+        context = new State();
         next = queue.invoke.call(context, next, results, queue);
 
         if (context.is(STATE_ERROR)) {
-            emit(queue, EVENT_ITEM_REJECTED, [next]);
+            onFunctionError(queue, next);
         }
     }
 
@@ -1270,6 +1270,19 @@ function checkFunction(queue, item) {
     }
 
     return !queue.isStarted;
+}
+
+/**
+ * Обработчик ошибок для элементов очереди типа "function"
+ * @param {Queue} queue
+ * @param {Error} error
+ */
+function onFunctionError (queue, error) {
+    emit(queue, EVENT_ITEM_REJECTED, [error]);
+
+    if (queue.isStrict) {
+        queue.reject(error);
+    }
 }
 
 /**
