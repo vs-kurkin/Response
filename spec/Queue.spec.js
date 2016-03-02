@@ -472,6 +472,37 @@ describe('Queue:', function () {
                 expect(listener).toHaveBeenCalledWith();
                 expect(listener.calls.mostRecent().object).toBe(queue);
             });
+
+            it('start should accept arguments for first task', function () {
+                var testArg1 = {};
+                var testArg2=  {};
+
+                queue
+                    .push(function (arg1, arg2) {
+                        expect(arg1).toBe(testArg1);
+                        expect(arg2).toBe(testArg2);
+                    })
+                    .start([testArg1, testArg2]);
+            });
+
+            it('start arguments should not propagate to second task', function () {
+                queue
+                    .push(function task1 () {
+                    })
+                    .push(function task2 () {
+                        console.log(arguments);
+                        expect(arguments.length).toBe(0);
+                    })
+                    .start([1, 2]);
+            });
+
+            it('start arguments should be an array', function () {
+                queue.start(null);
+                expect(queue.isRejected()).toBeTruthy();
+                queue.onReject(function (error) {
+                    expect(error).toEqual(jasmine.any(Error));
+                });
+            });
         });
 
         describe('after stopping', function () {

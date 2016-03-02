@@ -1097,10 +1097,25 @@ Queue.prototype.items = null;
 Queue.prototype.item = null;
 
 /**
+ * @readonly
+ * @type {Array|null}
+ * @default null
+ */
+Queue.prototype.startArgs = null;
+
+/**
  *
  * @returns {Queue}
  */
-Queue.prototype.start = function () {
+Queue.prototype.start = function (args) {
+    if (args !== undefined) {
+        if (!isArray(args)) {
+            this.reject(new Error('start arguments must be an array'));
+        }
+
+        this.startArgs = args;
+    }
+
     if (this.isStarted === false && this.isPending()) {
         this.isStarted = true;
 
@@ -1239,7 +1254,13 @@ function checkFunction(queue, item) {
     var results;
 
     if (isFunction(next)) {
-        results = Response.isResponse(item) ? item.stateData : [item];
+        if (queue.startArgs) {
+            results = queue.startArgs;
+            queue.startArgs = null;
+        } else {
+            results = Response.isResponse(item) ? item.stateData : [item];
+        }
+
         next = queue.invoke.call(queue.isStrict ? queue : null, next, results, queue);
     }
 
