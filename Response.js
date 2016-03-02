@@ -1100,9 +1100,9 @@ Queue.prototype.item = null;
  * Контекст выполнения всех задач очереди
  * @readonly
  * @type {*}
- * @default undefined
+ * @default null
  */
-Queue.prototype.context = undefined;
+Queue.prototype.context = null;
 
 /**
  *
@@ -1217,7 +1217,8 @@ Queue.prototype.onNextItem = function (listener, context) {
 
 /**
  * Устанавливает контекст для всех задач очереди
- * @param context
+ * @param {*} context
+ * @returns {Queue}
  */
 Queue.prototype.bind = function (context) {
     this.context = context;
@@ -1255,7 +1256,7 @@ function iterate(queue) {
 function checkFunction(queue, item) {
     var next = queue.items.shift();
     var results;
-    var tasksContext = (queue.context !== undefined) ? queue.context : queue;
+    var tasksContext = queue.context == null ? queue : queue.context;
 
     if (isFunction(next)) {
         results = Response.isResponse(item) ? item.stateData : [item];
