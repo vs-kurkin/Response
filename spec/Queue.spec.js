@@ -490,7 +490,6 @@ describe('Queue:', function () {
                     .push(function task1 () {
                     })
                     .push(function task2 () {
-                        console.log(arguments);
                         expect(arguments.length).toBe(0);
                     })
                     .start([1, 2]);
