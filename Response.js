@@ -1258,7 +1258,7 @@ function checkFunction(queue, item) {
             results = queue.startArgs;
             queue.startArgs = null;
         } else {
-            results = Response.isResponse(item) ? item.stateData : [item];
+            results = Response.isResponse(item) ? item.stateData : toArray(item);
         }
 
         next = queue.invoke.call(queue.isStrict ? queue : null, next, results, queue);
@@ -1429,6 +1429,15 @@ function destroyItems(items) {
  */
 function toObject(item) {
     return (item && item.toObject) ? item.toObject() : item;
+}
+
+/**
+ *
+ * @param {*} item
+ * @returns {Array}
+ */
+function toArray(item) {
+    return (item === undefined) ? [] : [item];
 }
 
 /**

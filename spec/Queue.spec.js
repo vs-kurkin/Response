@@ -654,6 +654,16 @@ describe('Queue:', function () {
                 expect(this.item).toBe(r2);
             }], true);
         });
+
+        it('should not pass undefined to next task', function () {
+            queue
+                .push(function task1 () {
+
+                })
+                .push(function task2 () {
+                    expect(arguments.length).toBe(0);
+                });
+        });
     });
 
     it('getResult should be returns result if state is pending', function () {
@@ -666,5 +676,5 @@ describe('Queue:', function () {
                 });
             })
             .start();
-    })
+    });
 });
