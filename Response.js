@@ -994,6 +994,7 @@ function Queue(items, start) {
     this.Response();
 
     this.items = isArray(items) ? items : [];
+    this.keys.length = this.items.length;
     this.item = null;
     this.isStarted = false;
     this.isStrict = this.isStrict;
@@ -1001,7 +1002,6 @@ function Queue(items, start) {
         .onState(STATE_RESOLVED, this.stop)
         .onState(STATE_REJECTED, this.stop);
 
-    this.keys.length = this.items.length;
 
     if (typeof start === 'boolean' && start) {
         this.start();
@@ -1139,9 +1139,7 @@ Queue.prototype.stop = function () {
  * @returns {Queue}
  */
 Queue.prototype.push = function (item, name) {
-    var keyIndex = this.items.length + this.stateData.length + Number(this.isStarted);
-
-    this.keys[keyIndex] = arguments.length > 1 || item == null ? name : item.name;
+    this.keys.push(arguments.length > 1 || item == null ? name : item.name);
     this.items.push(item);
 
     return this;
