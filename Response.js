@@ -994,6 +994,7 @@ function Queue(items, start) {
     this.Response();
 
     this.items = isArray(items) ? items : [];
+    this.keys.length = this.items.length;
     this.item = null;
     this.isStarted = false;
     this.isStrict = this.isStrict;
@@ -1001,7 +1002,6 @@ function Queue(items, start) {
         .onState(STATE_RESOLVED, this.stop)
         .onState(STATE_REJECTED, this.stop);
 
-    this.keys.length = this.items.length;
 
     if (typeof start === 'boolean' && start) {
         this.start();

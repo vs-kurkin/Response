@@ -286,9 +286,9 @@ describe('Queue:', function () {
         });
 
         it('dynamic push in items', function () {
-            queue = new Queue({
+            queue = new Queue([{
                     name: 'key0'
-                })
+                }])
                 .push(function key1 () {
                     this.push(listener, 'key3');
                 })
@@ -300,7 +300,7 @@ describe('Queue:', function () {
                 .start();
 
             expect(listener.calls.count()).toBe(3);
-            expect(queue.keys).toEqual(['key0', 'key1', 'key2', 'key3', 'key4', 'key5']);
+            expect(queue.keys).toEqual([undefined, 'key1', 'key2', 'key3', 'key4', 'key5']);
         });
     });
 
