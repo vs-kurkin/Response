@@ -262,9 +262,31 @@ describe('Queue:', function () {
             expect(queue.items).toEqual([i0, i1, i2, i2, i3, i3]);
         });
 
-        it('dynamic push in items', function () {
+        it('order of the keys by dynamic addition', function () {
+            var q = new Queue();
+
             queue = new Queue()
-                .push({
+                .push(1, 'a')
+                .push(function b () {
+                    expect(this.keys).toEqual(['a', 'b', 'c']);
+
+                    this.push(q, 'd');
+
+                    expect(this.keys).toEqual(['a', 'b', 'c', 'd']);
+                    expect(this.keys.length).toBe(4);
+
+                    return q;
+                })
+                .push(3, 'c')
+                .start();
+
+            q.resolve();
+
+            expect(queue.keys).toEqual(['a', 'b', 'c', 'd']);
+        });
+
+        it('dynamic push in items', function () {
+            queue = new Queue({
                     name: 'key0'
                 })
                 .push(function key1 () {

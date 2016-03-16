@@ -1139,9 +1139,7 @@ Queue.prototype.stop = function () {
  * @returns {Queue}
  */
 Queue.prototype.push = function (item, name) {
-    var keyIndex = this.items.length + this.stateData.length + Number(this.isStarted);
-
-    this.keys[keyIndex] = arguments.length > 1 || item == null ? name : item.name;
+    this.keys.push(arguments.length > 1 || item == null ? name : item.name);
     this.items.push(item);
 
     return this;
