@@ -20,6 +20,7 @@ var EVENT_PROGRESS = 'progress';
 var EVENT_START = 'start';
 var EVENT_STOP = 'stop';
 var EVENT_NEXT_ITEM = 'nextItem';
+var EVENT_ITEM_REJECTED = 'itemRejected';
 
 /**
  * @param {Object} proto
@@ -998,6 +999,7 @@ function Queue(items, start) {
     this.item = null;
     this.isStarted = false;
     this.isStrict = this.isStrict;
+    this.context = this;
     this
         .onState(STATE_RESOLVED, this.stop)
         .onState(STATE_REJECTED, this.stop);
@@ -1095,6 +1097,14 @@ Queue.prototype.items = null;
  * @default null
  */
 Queue.prototype.item = null;
+
+/**
+ * Контекст выполнения всех задач очереди
+ * @readonly
+ * @type {*}
+ * @default null
+ */
+Queue.prototype.context = null;
 
 /**
  * @param {Array} args - аргументы для первой задачи
@@ -1214,6 +1224,29 @@ Queue.prototype.onNextItem = function (listener, context) {
 };
 
 /**
+ * Подписка на ошибку выполнения элемента очереди
+ * @param {Function|EventEmitter} listener
+ * @param {Object} [context=this]
+ * @returns {Queue}
+ */
+Queue.prototype.onItemRejected = function (listener, context) {
+    this.on(EVENT_ITEM_REJECTED, listener, context);
+
+    return this;
+}
+
+/**
+ * Устанавливает контекст для всех задач очереди
+ * @param {*} context
+ * @returns {Queue}
+ */
+Queue.prototype.bind = function (context) {
+    this.context = context;
+
+    return this;
+};
+
+/**
  * Exports: {@link Response}
  * @exports Response
  */
@@ -1243,10 +1276,16 @@ function iterate(queue) {
 function checkFunction(queue, item) {
     var next = queue.items.shift();
     var results;
+    var context;
 
     if (isFunction(next)) {
         results = Response.isResponse(item) ? item.stateData : toArray(item);
-        next = queue.invoke.call(queue.isStrict ? queue : null, next, results, queue);
+        context = new State();
+        next = queue.invoke.call(context, next, results, queue.context);
+
+        if (context.is(STATE_ERROR)) {
+            onFunctionError(queue, next);
+        }
     }
 
     if (queue.isPending()) {
@@ -1257,6 +1296,19 @@ function checkFunction(queue, item) {
     }
 
     return !queue.isStarted;
+}
+
+/**
+ * Обработчик ошибок для элементов очереди типа "function"
+ * @param {Queue} queue
+ * @param {Error} error
+ */
+function onFunctionError (queue, error) {
+    emit(queue, EVENT_ITEM_REJECTED, [error]);
+
+    if (queue.isStrict) {
+        queue.reject(error);
+    }
 }
 
 /**
@@ -1297,6 +1349,8 @@ function onRejectItem(error) {
     if (Response.isResponse(this.item)) {
         this.item.off(STATE_RESOLVED, onResolveItem);
     }
+
+    emit(this, EVENT_ITEM_REJECTED, [error]);
 
     if (this.isStrict) {
         this.item = null;

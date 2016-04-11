@@ -379,6 +379,125 @@ describe('Queue:', function () {
 
             expect(listener.calls.mostRecent().object).toBe(ctx);
         });
+
+        it('on "itemRejected" event should not be fired if all items has resolved', function () {
+            queue
+                .push(1)
+                .push(function () {})
+                .push((new Response()).resolve())
+                .onItemRejected(listener)
+                .start();
+
+            queue.onResolve(function () {
+                expect(listener.calls.count()).toBe(0);
+            });
+        });
+
+        it('on "itemRejected" event should be fired with an error as argument', function () {
+            var error = new Error();
+
+            queue
+                .push(function () {
+                    throw error;
+                })
+                .onItemRejected(function (_error) {
+                    expect(_error).toBe(error);
+                })
+                .start();
+        });
+
+        it('on "itemRejected" event should fire for rejected Response', function () {
+            var resp = new Response();
+            resp.reject(new Error());
+
+            queue
+                .push(resp)
+                .onItemRejected(listener)
+                .start();
+
+            queue.onResolve(function () {
+                expect(listener.calls.count()).toBe(1);
+            });
+        });
+
+        it('on "itemRejected" event should fire for rejected function', function () {
+            queue
+                .push(function () {
+                    throw new Error();
+                })
+                .onItemRejected(listener)
+                .start();
+
+            queue.onResolve(function () {
+                expect(listener.calls.count()).toBe(1);
+            });
+        });
+
+        it('on "itemRejected" event should fire once for each rejected item', function () {
+            function failingFn () {
+                throw new Error();
+            }
+
+            queue
+                .push(failingFn)
+                .push((new Response()).reject(new Error()))
+                .push(2)
+                .onItemRejected(listener)
+                .onResolve(function () {
+                    expect(listener.calls.count()).toBe(2);
+                })
+                .start();
+        });
+
+        it('on "itemRejected" should not fire if function has returned an Error object', function () {
+            queue
+                .push(function () {
+                    return new Error();
+                })
+                .onItemRejected(listener)
+                .onResolve(function () {
+                    expect(listener.calls.count()).toBe(0);
+                })
+                .start();
+        });
+
+        it('on "itemRejected" should be fired before strict queue reject (function)', function () {
+            var onItemRejectedCalled = false;
+            var onRejectedCalled = false;
+
+            queue
+                .strict()
+                .push(function () {
+                    throw new Error();
+                })
+                .onItemRejected(function () {
+                    onItemRejectedCalled = true;
+                    expect(onRejectedCalled).toBe(false);
+                })
+                .onReject(function () {
+                    onRejectedCalled = true;
+                    expect(onItemRejectedCalled).toBe(true);
+                })
+                .start();
+        });
+
+        it('on "itemRejected" should be fired before strict queue reject (Response)', function () {
+            var onItemRejectedCalled = false;
+            var onRejectedCalled = false;
+
+            queue
+                .strict()
+                .push((new Response()).reject(new Error()))
+                .onItemRejected(function () {
+                    onItemRejectedCalled = true;
+                    expect(onRejectedCalled).toBe(false);
+                })
+                .onReject(function () {
+                    onRejectedCalled = true;
+                    expect(onItemRejectedCalled).toBe(true);
+                })
+                .start();
+        });
     });
 
     describe('destroy', function () {
@@ -684,6 +803,26 @@ describe('Queue:', function () {
                 .push(function task2 () {
                     expect(arguments.length).toBe(0);
                 });
+        });
+    });
+
+    describe('bind', function () {
+        it('should run tasks in queue context by default', function () {
+            queue
+                .push(function () {
+                    expect(this).toBe(queue);
+                })
+                .start();
+        });
+
+        it('should run tasks in specified context', function () {
+            var context = {};
+            queue
+                .bind(context)
+                .push(function () {
+                    expect(this).toBe(context);
+                })
+                .start();
         });
     });
 
