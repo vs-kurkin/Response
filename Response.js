@@ -1106,8 +1106,7 @@ Queue.prototype.start = function (args) {
             this.reject(new Error('start arguments must be an array'));
         }
 
-        var argsWrap = new Response();
-        this.item = argsWrap.resolve.apply(argsWrap, args);
+        this.item = (new Response()).setState(Response.STATE_RESOLVED, args);
     }
 
     if (this.isStarted === false && this.isPending()) {
