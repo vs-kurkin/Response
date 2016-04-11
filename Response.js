@@ -1107,10 +1107,18 @@ Queue.prototype.item = null;
 Queue.prototype.context = null;
 
 /**
- *
+ * @param {Array} args - аргументы для первой задачи
  * @returns {Queue}
  */
-Queue.prototype.start = function () {
+Queue.prototype.start = function (args) {
+    if (arguments.length > 0) {
+        if (!isArray(args)) {
+            this.reject(new Error('start arguments must be an array'));
+        }
+
+        this.item = (new Response()).setState(Response.STATE_RESOLVED, args);
+    }
+
     if (this.isStarted === false && this.isPending()) {
         this.isStarted = true;
 
