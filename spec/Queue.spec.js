@@ -657,6 +657,26 @@ describe('Queue:', function () {
         });
     });
 
+    describe('bind', function () {
+        it('should run tasks in queue context by default', function () {
+            queue
+                .push(function () {
+                    expect(this).toBe(queue);
+                })
+                .start();
+        });
+
+        it('should run tasks in specified context', function () {
+            var context = {};
+            queue
+                .bind(context)
+                .push(function () {
+                    expect(this).toBe(context);
+                })
+                .start();
+        });
+    });
+
     it('getResult should be returns result if state is pending', function () {
         new Queue()
             .push(1, 'one')

@@ -998,6 +998,7 @@ function Queue(items, start) {
     this.item = null;
     this.isStarted = false;
     this.isStrict = this.isStrict;
+    this.context = this;
     this
         .onState(STATE_RESOLVED, this.stop)
         .onState(STATE_REJECTED, this.stop);
@@ -1095,6 +1096,14 @@ Queue.prototype.items = null;
  * @default null
  */
 Queue.prototype.item = null;
+
+/**
+ * Контекст выполнения всех задач очереди
+ * @readonly
+ * @type {*}
+ * @default null
+ */
+Queue.prototype.context = null;
 
 /**
  *
@@ -1206,6 +1215,17 @@ Queue.prototype.onNextItem = function (listener, context) {
 };
 
 /**
+ * Устанавливает контекст для всех задач очереди
+ * @param {*} context
+ * @returns {Queue}
+ */
+Queue.prototype.bind = function (context) {
+    this.context = context;
+
+    return this;
+};
+
+/**
  * Exports: {@link Response}
  * @exports Response
  */
@@ -1238,7 +1258,7 @@ function checkFunction(queue, item) {
 
     if (isFunction(next)) {
         results = Response.isResponse(item) ? item.stateData : toArray(item);
-        next = queue.invoke.call(queue.isStrict ? queue : null, next, results, queue);
+        next = queue.invoke.call(queue.isStrict ? queue : null, next, results, queue.context);
     }
 
     if (queue.isPending()) {
