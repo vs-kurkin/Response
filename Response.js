@@ -997,6 +997,7 @@ function Queue(items, start) {
     this.item = null;
     this.isStarted = false;
     this.isStrict = this.isStrict;
+    this.context = this;
     this
         .onState(STATE_RESOLVED, this.stop)
         .onState(STATE_REJECTED, this.stop);
@@ -1256,11 +1257,10 @@ function iterate(queue) {
 function checkFunction(queue, item) {
     var next = queue.items.shift();
     var results;
-    var tasksContext = queue.context == null ? queue : queue.context;
 
     if (isFunction(next)) {
         results = Response.isResponse(item) ? item.stateData : [item];
-        next = queue.invoke.call(queue.isStrict ? queue : null, next, results, tasksContext);
+        next = queue.invoke.call(queue.isStrict ? queue : null, next, results, queue.context);
     }
 
     if (queue.isPending()) {
