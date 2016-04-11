@@ -262,11 +262,33 @@ describe('Queue:', function () {
             expect(queue.items).toEqual([i0, i1, i2, i2, i3, i3]);
         });
 
-        it('dynamic push in items', function () {
+        it('order of the keys by dynamic addition', function () {
+            var q = new Queue();
+
             queue = new Queue()
-                .push({
-                    name: 'key0'
+                .push(1, 'a')
+                .push(function b () {
+                    expect(this.keys).toEqual(['a', 'b', 'c']);
+
+                    this.push(q, 'd');
+
+                    expect(this.keys).toEqual(['a', 'b', 'c', 'd']);
+                    expect(this.keys.length).toBe(4);
+
+                    return q;
                 })
+                .push(3, 'c')
+                .start();
+
+            q.resolve();
+
+            expect(queue.keys).toEqual(['a', 'b', 'c', 'd']);
+        });
+
+        it('dynamic push in items', function () {
+            queue = new Queue([{
+                    name: 'key0'
+                }])
                 .push(function key1 () {
                     this.push(listener, 'key3');
                 })
@@ -278,7 +300,7 @@ describe('Queue:', function () {
                 .start();
 
             expect(listener.calls.count()).toBe(3);
-            expect(queue.keys).toEqual(['key0', 'key1', 'key2', 'key3', 'key4', 'key5']);
+            expect(queue.keys).toEqual([undefined, 'key1', 'key2', 'key3', 'key4', 'key5']);
         });
     });
 
@@ -623,6 +645,16 @@ describe('Queue:', function () {
                 expect(this.item).toBe(r2);
             }], true);
         });
+
+        it('should not pass undefined to next task', function () {
+            queue
+                .push(function task1 () {
+
+                })
+                .push(function task2 () {
+                    expect(arguments.length).toBe(0);
+                });
+        });
     });
 
     describe('bind', function () {
@@ -655,5 +687,5 @@ describe('Queue:', function () {
                 });
             })
             .start();
-    })
+    });
 });
