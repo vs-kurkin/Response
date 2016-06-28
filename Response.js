@@ -3,6 +3,10 @@
  * @fileOverview Response.
  */
 
+/**
+ * @module Response
+ */
+
 var EventEmitter = require('EventEmitter');
 var toString = Object.prototype.toString;
 
@@ -88,9 +92,9 @@ var bind = isFunction(Function.prototype.bind) ? function (callback, context) {
 /**
  * Конструктор объекта "Состояние".
  * @param {*} [state=null] Значение начального состояние объекта.
- * @returns {State}
  * @constructor
  * @extends {EventEmitter}
+ * @memberOf module:Response
  * @see https://ru.wikipedia.org/wiki/Состояние_(шаблон_проектирования)
  */
 function State(state) {
@@ -515,8 +519,8 @@ State.prototype.setKeys = function (keys) {
  * @param {Response|Promise} [parent]
  * @constructor
  * @requires EventEmitter
- * @extends {State}
- * @returns {Response}
+ * @extends module:Response.State
+ * @memberOf module:Response
  */
 function Response(parent) {
     this.State(STATE_PENDING);
@@ -988,7 +992,8 @@ Response.prototype.getReason = function () {
  * @param {Response[]|Promise[]|Function[]|*[]} [items=[]]
  * @param {Boolean} [start=false]
  * @constructor
- * @extends {Response}
+ * @extends module:Response.Response
+ * @memberOf module:Response
  * @returns {Queue}
  */
 function Queue(items, start) {
