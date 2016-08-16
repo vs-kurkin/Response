@@ -401,6 +401,17 @@ describe('Response:', function () {
                 expect(listener.calls.count()).toBe(1);
             });
 
+            it('on a several any', function () {
+                var listener2 = jasmine.createSpy();
+
+                resp
+                    .any(listener, ctx)
+                    .any(listener2, ctx)
+                    .resolve();
+
+                expect(listener2.calls.count()).toBe(1);
+            });
+
             describe('on progress', function () {
                 it('event', function () {
                     resp

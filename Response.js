@@ -772,11 +772,13 @@ Response.prototype.any = function (listener, context) {
     if (this.isResolved() || this.isRejected()) {
         invokeListener(this, listener, context);
     } else {
-        this.then(onAny, onAny, null, {
-            response: this,
-            listener: listener,
-            context: context
-        });
+        var onAny = function () {
+            this.off(this.isResolved() ? STATE_REJECTED : STATE_RESOLVED, onAny);
+
+            invokeListener(this, listener, context);
+        };
+
+        this.then(onAny, onAny, null, this);
     }
 
     return this;
@@ -912,7 +914,7 @@ Response.prototype.map = function (listener, context) {
         context: context
     };
 
-    if(this.isResolved()) {
+    if (this.isResolved()) {
         onMap.call(_context);
     } else {
         this.onResolve(onMap, _context);
@@ -1238,7 +1240,7 @@ Queue.prototype.onItemRejected = function (listener, context) {
     this.on(EVENT_ITEM_REJECTED, listener, context);
 
     return this;
-}
+};
 
 /**
  * Устанавливает контекст для всех задач очереди
@@ -1308,7 +1310,7 @@ function checkFunction(queue, item) {
  * @param {Queue} queue
  * @param {Error} error
  */
-function onFunctionError (queue, error) {
+function onFunctionError(queue, error) {
     emit(queue, EVENT_ITEM_REJECTED, [error]);
 
     if (queue.isStrict) {
@@ -1567,18 +1569,7 @@ function then(object, resolve, reject, progress, context) {
 /**
  *
  */
-function onAny() {
-    var response = this.response;
-
-    response.off(response.isResolved() ? STATE_REJECTED : STATE_RESOLVED, onAny);
-
-    invokeListener(response, this.listener, this.context);
-}
-
-/**
- *
- */
-function onMap () {
+function onMap() {
     var response = this.response;
     var result = response.invoke(this.listener, response.stateData, this.context);
 
