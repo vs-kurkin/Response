@@ -86,7 +86,7 @@ var bind = isFunction(Function.prototype.bind) ? function (callback, context) {
             }
 
             return callback.apply(context, args);
-        }
+        };
 };
 
 /**
@@ -908,17 +908,13 @@ Response.prototype.fork = function () {
  * @returns {Response}
  */
 Response.prototype.map = function (listener, context) {
-    var _context = {
-        response: this,
-        listener: listener,
-        context: context
-    };
+    this.onResolve(function () {
+        var result = this.invoke(listener, this.stateData, context);
 
-    if (this.isResolved()) {
-        onMap.call(_context);
-    } else {
-        this.onResolve(onMap, _context);
-    }
+        if (this.isResolved()) {
+            this.resolve(result);
+        }
+    }, this);
 
     return this;
 };
@@ -1563,18 +1559,6 @@ function then(object, resolve, reject, progress, context) {
         object.then(resolve, reject, progress, context);
     } else {
         object.then(bind(resolve, context), bind(reject, context), bind(progress, context));
-    }
-}
-
-/**
- *
- */
-function onMap() {
-    var response = this.response;
-    var result = response.invoke(this.listener, response.stateData, this.context);
-
-    if (response.isResolved()) {
-        response.resolve(result);
     }
 }
 

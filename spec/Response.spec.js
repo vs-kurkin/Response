@@ -603,6 +603,23 @@ describe('Response:', function () {
             expect(listener).toHaveBeenCalledWith(error);
             expect(resp.isRejected()).toBeTruthy();
         });
+
+        it('should correctly working with several listeners after change state', function () {
+            var listener2 = jasmine.createSpy();
+
+            new Response()
+                .map(listener)
+                .onResolve(function () {
+                    this
+                        .pending()
+                        .resolve();
+                })
+                .map(listener2)
+                .resolve();
+
+            expect(listener.calls.count()).toBe(1);
+            expect(listener2.calls.count()).toBe(1);
+        });
     });
 
     describe('getResult', function () {
