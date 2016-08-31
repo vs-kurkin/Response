@@ -12,7 +12,7 @@
         "node": "*"
     },
     "dependencies": {
-        "EventEmitter": "B-Vladi/EventEmitter.git#0.2.6"
+        "bluebird": "^3.4.5"
     },
     "devDependencies": {
         "jasmine": "2.0.1",
