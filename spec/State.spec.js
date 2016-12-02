@@ -543,6 +543,12 @@ describe('State:', function () {
         }
     });
 
+    it('destroy with an empty State object don`t throw exception', function () {
+        state
+            .setState(1, [new State().destroy()])
+            .destroy(true);
+    });
+
     describe('invoke', function () {
         it('without arguments', function () {
             state.invoke(listener);

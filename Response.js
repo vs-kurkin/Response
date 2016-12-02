@@ -277,7 +277,7 @@ State.prototype.invoke = function (fnc, args, context) {
  * @returns {State}
  */
 State.prototype.destroy = function (recursive) {
-    if (recursive === true) {
+    if (recursive === true && this.stateData) {
         destroyItems(this.stateData);
     }
 
@@ -1007,7 +1007,6 @@ function Queue(items, start) {
         .onState(STATE_RESOLVED, this.stop)
         .onState(STATE_REJECTED, this.stop);
 
-
     if (typeof start === 'boolean' && start) {
         this.start();
     }
@@ -1110,7 +1109,7 @@ Queue.prototype.item = null;
 Queue.prototype.context = null;
 
 /**
- * @param {Array} args - аргументы для первой задачи
+ * @param {Array} [args] - аргументы для первой задачи
  * @returns {Queue}
  */
 Queue.prototype.start = function (args) {
