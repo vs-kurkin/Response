@@ -1180,11 +1180,13 @@ Queue.prototype.strict = function (flag) {
  * @returns {Queue}
  */
 Queue.prototype.destroy = function (recursive) {
-    if (recursive === true) {
-        destroyItems(this.items.concat(this.stateData));
-    }
+    if (this.items && this.stateData) {
+        if (recursive === true) {
+            destroyItems(this.items.concat(this.stateData));
+        }
 
-    destroy(this);
+        destroy(this);
+    }
 
     return this;
 };

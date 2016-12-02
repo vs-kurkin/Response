@@ -837,4 +837,8 @@ describe('Queue:', function () {
             })
             .start();
     });
+
+    it('destroy for empty Queue don`t throw expection', function () {
+        new Queue().destroy().destroy(true);
+    });
 });
