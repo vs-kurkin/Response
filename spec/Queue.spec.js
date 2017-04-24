@@ -841,4 +841,62 @@ describe('Queue:', function () {
     it('destroy for empty Queue don`t throw expection', function () {
         new Queue().destroy().destroy(true);
     });
+
+    describe('External errors:', function () {
+        var faultyListener;
+
+        beforeEach(function(){
+            faultyListener = jasmine.createSpy('faultyListener').and.callFake(function throwsError() {
+                throw new Error('handler throws');
+            });
+
+            goodListener = jasmine.createSpy('goodListener');
+        });
+
+        it('resolves when .onResolve for an item throws error', function () {
+            expect(faultyListener).toThrow();
+
+            var item = new Response().onResolve(faultyListener);
+
+            queue
+                .push(item)
+                .onResolve(goodListener)
+                .start();
+
+            item.resolve(1);
+
+            expect(goodListener).toHaveBeenCalled();
+        });
+
+        it('resolves when .onReject for an item throws error', function () {
+            expect(faultyListener).toThrow();
+
+            var item = new Response().onReject(faultyListener);
+
+            queue
+                .push(item)
+                .onResolve(goodListener)
+                .start();
+
+            item.reject(new Error('item fails'));
+
+            expect(goodListener).toHaveBeenCalled();
+        });
+
+        it('rejects if .strict and .onReject for an item throws an error', function () {
+            expect(faultyListener).toThrow();
+
+            var item = new Response().onReject(faultyListener);
+
+            queue
+                .push(item)
+                .onReject(goodListener)
+                .strict()
+                .start();
+
+            item.reject(new Error('item fails'));
+
+            expect(goodListener).toHaveBeenCalled();
+        });
+    });
 });
