@@ -267,7 +267,7 @@ describe('Queue:', function () {
 
             queue = new Queue()
                 .push(1, 'a')
-                .push(function b () {
+                .push(function b() {
                     expect(this.keys).toEqual(['a', 'b', 'c']);
 
                     this.push(q, 'd');
@@ -287,12 +287,12 @@ describe('Queue:', function () {
 
         it('dynamic push in items', function () {
             queue = new Queue([{
-                    name: 'key0'
-                }])
-                .push(function key1 () {
+                name: 'key0'
+            }])
+                .push(function key1() {
                     this.push(listener, 'key3');
                 })
-                .push(function key2 () {
+                .push(function key2() {
                     this
                         .push(listener, 'key4')
                         .push(listener, 'key5');
@@ -383,7 +383,8 @@ describe('Queue:', function () {
         it('on "itemRejected" event should not be fired if all items has resolved', function () {
             queue
                 .push(1)
-                .push(function () {})
+                .push(function () {
+                })
                 .push((new Response()).resolve())
                 .onItemRejected(listener)
                 .start();
@@ -434,7 +435,7 @@ describe('Queue:', function () {
         });
 
         it('on "itemRejected" event should fire once for each rejected item', function () {
-            function failingFn () {
+            function failingFn() {
                 throw new Error();
             }
 
@@ -616,7 +617,7 @@ describe('Queue:', function () {
 
             it('start should accept arguments for first task', function () {
                 var testArg1 = {};
-                var testArg2=  {};
+                var testArg2 = {};
 
                 queue
                     .push(function (arg1, arg2) {
@@ -628,9 +629,9 @@ describe('Queue:', function () {
 
             it('start arguments should not propagate to second task', function () {
                 queue
-                    .push(function task1 () {
+                    .push(function task1() {
                     })
-                    .push(function task2 () {
+                    .push(function task2() {
                         expect(arguments.length).toBe(0);
                     })
                     .start([1, 2]);
@@ -797,10 +798,10 @@ describe('Queue:', function () {
 
         it('should not pass undefined to next task', function () {
             queue
-                .push(function task1 () {
+                .push(function task1() {
 
                 })
-                .push(function task2 () {
+                .push(function task2() {
                     expect(arguments.length).toBe(0);
                 });
         });
@@ -840,5 +841,66 @@ describe('Queue:', function () {
 
     it('destroy for empty Queue don`t throw expection', function () {
         new Queue().destroy().destroy(true);
+    });
+
+    describe('External errors:', function () {
+        var faultyListener;
+        var goodListener;
+
+        beforeEach(function () {
+            faultyListener = jasmine
+                .createSpy('faultyListener').and
+                .callFake(function throwsError() {
+                    throw new Error('handler throws');
+                });
+
+            goodListener = jasmine.createSpy('goodListener');
+        });
+
+        it('resolves when .onResolve for an item throws error', function () {
+            expect(faultyListener).toThrow();
+
+            var item = new Response().onResolve(faultyListener);
+
+            queue
+                .push(item)
+                .onResolve(goodListener)
+                .start();
+
+            item.resolve(1);
+
+            expect(goodListener).toHaveBeenCalled();
+        });
+
+        it('resolves when .onReject for an item throws error', function () {
+            expect(faultyListener).toThrow();
+
+            var item = new Response().onReject(faultyListener);
+
+            queue
+                .push(item)
+                .onResolve(goodListener)
+                .start();
+
+            item.reject(new Error('item fails'));
+
+            expect(goodListener).toHaveBeenCalled();
+        });
+
+        it('rejects if .strict and .onReject for an item throws an error', function () {
+            expect(faultyListener).toThrow();
+
+            var item = new Response().onReject(faultyListener);
+
+            queue
+                .push(item)
+                .onReject(goodListener)
+                .strict()
+                .start();
+
+            item.reject(new Error('item fails'));
+
+            expect(goodListener).toHaveBeenCalled();
+        });
     });
 });

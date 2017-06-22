@@ -1327,7 +1327,20 @@ function checkResponse(queue, item) {
     }
 
     if (isCompatible(item) && !isItemResolved(item)) {
-        then(item, onResolveItem, onRejectItem, null, queue);
+        if (item.onChangeState && !isItemRejected(item)) {
+            item.once(EVENT_CHANGE_STATE, function listener(state) {
+                switch (state) {
+                    case STATE_RESOLVED:
+                        onResolveItem.call(queue);
+                        break;
+                    case STATE_REJECTED:
+                        onRejectItem.call(queue, this.getReason());
+                        break;
+                }
+            });
+        } else {
+            then(item, onResolveItem, onRejectItem, null, queue);
+        }
         return true;
     }
 }
