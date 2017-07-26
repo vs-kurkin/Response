@@ -1367,7 +1367,9 @@ function onRejectItem(error) {
         this.item.off(STATE_RESOLVED, onResolveItem);
     }
 
-    emit(this, EVENT_ITEM_REJECTED, [error]);
+    if (isFunction(this.item.onReject)) {
+        emit(this, EVENT_ITEM_REJECTED, [error]);
+    }
 
     if (this.isStrict) {
         this.item = null;
