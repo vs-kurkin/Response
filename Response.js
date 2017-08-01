@@ -1327,20 +1327,7 @@ function checkResponse(queue, item) {
     }
 
     if (isCompatible(item) && !isItemResolved(item)) {
-        if (item.onChangeState && !isItemRejected(item)) {
-            item.once(EVENT_CHANGE_STATE, function listener(state) {
-                switch (state) {
-                    case STATE_RESOLVED:
-                        onResolveItem.call(queue);
-                        break;
-                    case STATE_REJECTED:
-                        onRejectItem.call(queue, this.getReason());
-                        break;
-                }
-            });
-        } else {
-            then(item, onResolveItem, onRejectItem, null, queue);
-        }
+        then(item, onResolveItem, onRejectItem, null, queue);
         return true;
     }
 }
@@ -1440,6 +1427,14 @@ function toError(value) {
 function changeState(object, state, data) {
     object.stopEmit(object.state);
     object.state = state;
+
+    if (state === STATE_ERROR && object.listenerCount(state) === 0) {
+        process.nextTick(() => {
+            if (object.is(state) && !object.listenerCount(state)) {
+                process.emit('unhandledStateError', data[0], object);
+            }
+        });
+    }
 
     emit(object, state, data);
 
@@ -1544,7 +1539,19 @@ function tryEmit(emitter, type, data) {
                 emitter.emit.apply(emitter, [type].concat(data));
         }
     } catch (error) {
-        emitter.setState(STATE_ERROR, [toError(error)]);
+        data = [toError(error)];
+
+        if (
+            type === STATE_ERROR &&
+            emitter._event &&
+            emitter._event.stop === false &&
+            emitter.getEventType() === type &&
+            emitter.listenerCount(STATE_ERROR) > 0
+        ) {
+            tryEmit(emitter, type, data);
+        } else {
+            emitter.setState(STATE_ERROR, data);
+        }
     }
 }
 

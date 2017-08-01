@@ -340,6 +340,62 @@ describe('State:', function () {
 
             expect(listener).not.toHaveBeenCalled();
         });
+
+        describe('should be emit "unhandledStateError" on process', function () {
+            it('if the state does not have event listeners', function (done) {
+                var error = new Error();
+
+                process.on('unhandledStateError', listener);
+
+                state.setState('error', error);
+
+                expect(listener).not.toHaveBeenCalled();
+
+                process.nextTick(function () {
+                    expect(listener).toHaveBeenCalledWith(error, state);
+
+                    done();
+                })
+            });
+        });
+
+        describe('should not be emit "unhandledStateError" on process', function () {
+            it('if the state have event listeners', function (done) {
+                var error = new Error();
+
+                process.on('unhandledStateError', listener);
+
+                state
+                    .onState('error', () => {})
+                    .setState('error', error);
+
+                expect(listener).not.toHaveBeenCalled();
+
+                process.nextTick(function () {
+                    expect(listener).not.toHaveBeenCalled();
+
+                    done();
+                })
+            });
+
+            it('if the state have once event listeners', function (done) {
+                var error = new Error();
+
+                process.on('unhandledStateError', listener);
+
+                state
+                    .onceState('error', () => {})
+                    .setState('error', error);
+
+                expect(listener).not.toHaveBeenCalled();
+
+                process.nextTick(function () {
+                    expect(listener).not.toHaveBeenCalled();
+
+                    done();
+                })
+            });
+        });
     });
 
     describe('state data', function () {

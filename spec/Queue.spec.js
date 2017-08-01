@@ -846,12 +846,13 @@ describe('Queue:', function () {
     describe('External errors:', function () {
         var faultyListener;
         var goodListener;
+        var error = new Error('handler throws');
 
         beforeEach(function () {
             faultyListener = jasmine
                 .createSpy('faultyListener').and
                 .callFake(function throwsError() {
-                    throw new Error('handler throws');
+                    throw error;
                 });
 
             goodListener = jasmine.createSpy('goodListener');
@@ -884,7 +885,7 @@ describe('Queue:', function () {
 
             item.reject(new Error('item fails'));
 
-            expect(goodListener).toHaveBeenCalled();
+            expect(goodListener).toHaveBeenCalledWith(item);
         });
 
         it('rejects if .strict and .onReject for an item throws an error', function () {
@@ -900,7 +901,7 @@ describe('Queue:', function () {
 
             item.reject(new Error('item fails'));
 
-            expect(goodListener).toHaveBeenCalled();
+            expect(goodListener).toHaveBeenCalledWith(error);
         });
     });
 });
