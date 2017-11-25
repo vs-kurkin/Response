@@ -1,0 +1,107 @@
+// @flow
+
+import EventEmitter from 'events';
+
+export type Listener = Function | EventEmitter;
+
+declare class State<S = null> extends EventEmitter {
+    static EVENT_CHANGE_STATE: 'changeState';
+    static STATE_ERROR: 'error';
+
+    // TODO: предикаты для методов пока не поддерживаются.
+    static isState(it: mixed): boolean; //%checks (it instanceof State);
+    static create<C: Function>(C, copyStatic?: boolean): C;
+    static invoke<A, R>(fn: (...args: A) => R, args: ?A, context: mixed): R;
+
+    isState: true;
+    state: S;
+    data: mixed;
+    keys: ?string[];
+    stateData: mixed[];
+
+    constructor(state?: S): void;
+
+    invoke<A, R>(fn: (...args: A) => R, args: ?A, context: mixed): R;
+    destroy(recursive: ?boolean): this;
+    is(state: S): boolean;
+    setState(state: S, data: mixed): this;
+    onState(state: S, listener: Listener, context: mixed): this;
+    onceState(state: S, listener: Listener, context: mixed): this;
+    onChangeState(listener: Listener, context: mixed): this;
+    offChangeState(listener: Listener): this;
+    setData(key: string, value: mixed): this;
+    getData(key?: string): mixed;
+    getStateData(key: string): mixed;
+    toObject(keys?: string[]): Object;
+    toJSON(): Object;
+    setKeys(keys?: string[]): this;
+}
+
+declare export default class Response extends State<string> {
+    // Т.к. часто использует без отдельного импорта.
+    static State: Class<State<string>>;
+    static Queue: Class<Queue>;
+
+    static STATE_PENDING: 'pending';
+    static STATE_RESOLVED: 'resolve';
+    static STATE_REJECTED: 'error';
+    static EVENT_PROGRESS: 'progress';
+
+    static isResponse(it: mixed): boolean; //%checks (it instanceof Response);
+    static resolve(mixed): Response;
+    static reject(mixed): Response;
+
+    isResponse: true;
+
+    constructor(parent?: Response): void;
+
+    pending(): this;
+    resolve(mixed): this;
+    reject(mixed): this;
+    progress(mixed): this;
+    isPending(): boolean;
+    isResolved(): boolean;
+    isRejected(): boolean;
+
+    then(onResolve?: Listener, onReject?: Listener, onProgress?: Listener, context?: mixed): this;
+    any(Listener, context: mixed): this;
+    onPending(Listener, context: mixed): this;
+    onResolve(Listener, context: mixed): this;
+    onReject(Listener, context: mixed): this;
+    onProgress(Listener, context: mixed): this;
+    notify(Response): this;
+    listen(Response): this;
+    done(): this;
+    fork(): Response;
+    map(Listener, context: mixed): this;
+    getResult(mixed): mixed;
+    getReason(): mixed;
+}
+
+declare export class Queue extends Response {
+    static EVENT_START: 'start';
+    static EVENT_STOP: 'stop';
+    static EVENT_NEXT_ITEM: 'nextItem';
+    static EVENT_ITEM_REJECTED: 'itemRejected';
+
+    static isQueue(it: mixed): boolean; //%checks (it instanceof Queue);
+
+    isQueue: true;
+    items: mixed[];
+    item: mixed;
+    isStarted: boolean;
+    isStrict: boolean;
+    context: mixed;
+
+    constructor(items: ?mixed[], start?: boolean): void;
+
+    start(args?: mixed[]): this;
+    stop(): this;
+    push(item: Response | Function, name: string): this;
+    strict(flag?: boolean): this;
+    onStart(Listener, context: mixed): this;
+    onStop(Listener, context: mixed): this;
+    onNextItem(Listener, context: mixed): this;
+    onItemRejected(Listener, context: mixed): this;
+    bind(context: mixed): this;
+}
