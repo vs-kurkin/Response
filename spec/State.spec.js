@@ -7,6 +7,33 @@ describe('State:', function () {
     var listener;
     var ctx;
 
+    // TODO тесты используют process.on, process.emit
+    // в тестах через карму там используется пакет в котором
+    // process.on, process.emit просто noop-заглушки
+    // https://github.com/defunctzombie/node-process/blob/master/browser.js#L164
+    // пока просто детектим браузер по window
+    if (typeof window !== 'undefined') {
+        process.__events__ = {};
+
+        process.on = function(event, cb) {
+            process.__events__[event] = cb;
+        };
+
+        process.emit = function () {
+
+            var input = arguments;
+            var event = input[0];
+
+            if (typeof process.__events__[event] === 'function') {
+                var args = Object.keys(input).slice(1).map(function (k) {
+                    return input[k];
+                });
+
+                process.__events__[event].apply(this, args);
+            }
+        }
+    }
+
     function checkProperties() {
         expect(state.state).toBeNull();
         expect(state.data).toEqual({});
@@ -366,7 +393,7 @@ describe('State:', function () {
                 process.on('unhandledStateError', listener);
 
                 state
-                    .onState('error', () => {})
+                    .onState('error', function () {})
                     .setState('error', error);
 
                 expect(listener).not.toHaveBeenCalled();
@@ -384,7 +411,7 @@ describe('State:', function () {
                 process.on('unhandledStateError', listener);
 
                 state
-                    .onceState('error', () => {})
+                    .onceState('error', function () {})
                     .setState('error', error);
 
                 expect(listener).not.toHaveBeenCalled();

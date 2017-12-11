@@ -1429,7 +1429,8 @@ function changeState(object, state, data) {
     object.state = state;
 
     if (state === STATE_ERROR && object.listenerCount(state) === 0) {
-        process.nextTick(() => {
+
+        process.nextTick(function () {
             if (object.is(state) && !object.listenerCount(state)) {
                 process.emit('unhandledStateError', data[0], object);
             }
