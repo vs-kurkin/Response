@@ -5,7 +5,7 @@ import EventEmitter from 'events';
 export type StateListener = (string => void) | EventEmitter;
 export type Listener = ((...args: mixed[]) => void) | EventEmitter;
 
-declare export class State extends EventEmitter {
+class State extends EventEmitter {
     static EVENT_CHANGE_STATE: 'changeState';
     static STATE_ERROR: 'error';
 
@@ -38,7 +38,7 @@ declare export class State extends EventEmitter {
     setKeys(keys?: string[]): this;
 }
 
-declare export default class Response extends State {
+module.exports = class Response extends State {
     // Т.к. часто используется без отдельного импорта.
     static State: Class<State>;
     static Queue: Class<Queue>;
@@ -79,7 +79,7 @@ declare export default class Response extends State {
     getReason(): mixed;
 }
 
-declare export class Queue extends Response {
+class Queue extends Response {
     static EVENT_START: 'start';
     static EVENT_STOP: 'stop';
     static EVENT_NEXT_ITEM: 'nextItem';
