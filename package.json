@@ -1,7 +1,7 @@
 {
     "name": "Response",
-    "author": "Vladislav Kurkin <b-vladi@cs-console.ru> (https://github.com/B-Vladi)",
-    "version": "0.1.14",
+    "author": "Vladislav Kurkin <b-vladi@yandex-team.ru>",
+    "version": "1.0.0",
     "main": "Response.js",
     "license": "MIT",
     "repository": {
@@ -27,7 +27,7 @@
         "Igor Zarutskiy <igorzarut@yandex-team.ru>"
     ],
     "bugs": {
-        "email": "b-vladi@cs-console.ru",
+        "email": "b-vladi@yandex-team.ru",
         "url": "https://github.com/B-Vladi/Response/issues"
     },
     "scripts": {

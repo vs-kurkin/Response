@@ -6,32 +6,31 @@
 /**
  * @module Response
  */
-
-var EventEmitter = require('EventEmitter');
-var toString = Object.prototype.toString;
+const EventEmitter = require('EventEmitter');
+const toString = Object.prototype.toString;
 
 /**
  * Constants
  */
-var EVENT_CHANGE_STATE = 'changeState';
-var STATE_ERROR = 'error';
+const EVENT_CHANGE_STATE = 'changeState';
+const STATE_ERROR = 'error';
 
-var STATE_PENDING = 'pending';
-var STATE_RESOLVED = 'resolve';
-var STATE_REJECTED = 'error';
-var EVENT_PROGRESS = 'progress';
+const STATE_PENDING = 'pending';
+const STATE_RESOLVED = 'resolve';
+const STATE_REJECTED = 'error';
+const EVENT_PROGRESS = 'progress';
 
-var EVENT_START = 'start';
-var EVENT_STOP = 'stop';
-var EVENT_NEXT_ITEM = 'nextItem';
-var EVENT_ITEM_REJECTED = 'itemRejected';
+const EVENT_START = 'start';
+const EVENT_STOP = 'stop';
+const EVENT_NEXT_ITEM = 'nextItem';
+const EVENT_ITEM_REJECTED = 'itemRejected';
 
 /**
  * @param {Object} proto
  * @param {Function} constructor
  * @type {Function}
  */
-var defineConstructor = isFunction(Object.defineProperty) ? function (proto, constructor) {
+const defineConstructor = isFunction(Object.defineProperty) ? function (proto, constructor) {
     Object.defineProperty(proto, 'constructor', {
         value: constructor,
         enumerable: false,
@@ -46,10 +45,10 @@ var defineConstructor = isFunction(Object.defineProperty) ? function (proto, con
  * @function
  * @param {*} object
  */
-var getKeys = isFunction(Object.keys) ? Object.keys : function keys(object) {
-    var keys = [];
+const getKeys = isFunction(Object.keys) ? Object.keys : function keys(object) {
+    const keys = [];
 
-    for (var name in object) {
+    for (let name in object) {
         if (object.hasOwnProperty(name)) {
             keys.push(name);
         }
@@ -62,7 +61,7 @@ var getKeys = isFunction(Object.keys) ? Object.keys : function keys(object) {
  * @function
  * @param {*} object
  */
-var isArray = isFunction(Array.isArray) ? Array.isArray : function isArray(object) {
+const isArray = isFunction(Array.isArray) ? Array.isArray : function isArray(object) {
     return object && (toString.call(object) === '[object Array]');
 };
 
@@ -73,20 +72,20 @@ var isArray = isFunction(Array.isArray) ? Array.isArray : function isArray(objec
  * @returns {Function}
  * @type {Function}
  */
-var bind = isFunction(Function.prototype.bind) ? function (callback, context) {
+const bind = isFunction(Function.prototype.bind) ? function (callback, context) {
     return callback && callback.bind(context);
 } : function (callback, context) {
     return callback && function () {
-            var index = 0;
-            var length = arguments.length;
-            var args = new Array(length);
+        let index = 0;
+        const length = arguments.length;
+        const args = new Array(length);
 
-            while (index < length) {
-                args[index] = arguments[index++];
-            }
+        while (index < length) {
+            args[index] = arguments[index++];
+        }
 
-            return callback.apply(context, args);
-        };
+        return callback.apply(context, args);
+    };
 };
 
 /**
@@ -175,7 +174,7 @@ State.create = function (constructor, copyStatic) {
  * @returns {State} Созданный объект {@link State}, в контексте которого вызывается {@link State#invoke}.
  */
 State.invoke = function (fnc, args, context) {
-    var state = new this();
+    const state = new this();
 
     state.invoke(fnc, args, context);
 
@@ -231,9 +230,9 @@ State.prototype.stateData = null;
  * @returns {*|Error} Результат, который вернет выполняемая функция, либо объект ошибки, если функция выбросила исключение.
  */
 State.prototype.invoke = function (fnc, args, context) {
-    var _args = isArray(args) ? args : [];
-    var ctx = context == null ? this : context;
-    var result;
+    const _args = isArray(args) ? args : [];
+    const ctx = context == null ? this : context;
+    let result;
 
     try {
         switch (_args.length) {
@@ -319,9 +318,9 @@ State.prototype.is = function (state) {
  *   .setState('foo', [true, false]);
  */
 State.prototype.setState = function (state, data) {
-    var _state = this.state !== state;
-    var _hasData = arguments.length > 1;
-    var _data = _hasData ? wrapIfNotArray(data) : [];
+    const _state = this.state !== state;
+    const _hasData = arguments.length > 1;
+    const _data = _hasData ? wrapIfNotArray(data) : [];
 
     if (_state || _hasData) {
         this.stateData = _data;
@@ -453,7 +452,7 @@ State.prototype.getData = function (key) {
  * @returns {*|undefined} Данные состояния, либо undefined, если данные с таким ключем отсутствуют.
  */
 State.prototype.getStateData = function (key) {
-    var index = this.keys.length;
+    let index = this.keys.length;
 
     while (index) {
         if (this.keys[--index] === key) {
@@ -472,11 +471,11 @@ State.prototype.getStateData = function (key) {
  * @returns {Object} Результат трансформации.
  */
 State.prototype.toObject = function (keys) {
-    var _keys = isArray(keys) ? keys : this.keys;
-    var length = this.stateData.length;
-    var index = 0;
-    var result = {};
-    var key;
+    const _keys = isArray(keys) ? keys : this.keys;
+    const length = this.stateData.length;
+    let index = 0;
+    const result = {};
+    let key;
 
     if (length === 0 || _keys.length === 0) {
         return result;
@@ -611,8 +610,8 @@ Response.invoke = State.invoke;
  * @returns {Response}
  */
 Response.resolve = function (results) {
-    var response = new Response();
-    var index = arguments.length;
+    const response = new Response();
+    let index = arguments.length;
 
     while (index) {
         response.stateData[--index] = arguments[index];
@@ -630,7 +629,7 @@ Response.resolve = function (results) {
  * @returns {Response}
  */
 Response.reject = function (reason) {
-    var response = new Response();
+    const response = new Response();
 
     response.state = STATE_REJECTED;
     response.stateData[0] = toError(reason);
@@ -668,10 +667,10 @@ Response.prototype.pending = function () {
  * @returns {Response}
  */
 Response.prototype.resolve = function (results) {
-    var index = arguments.length;
+    let index = arguments.length;
 
     if (index || !this.isResolved()) {
-        var data = [];
+        const data = [];
 
         while (index) {
             data[--index] = arguments[index];
@@ -772,7 +771,7 @@ Response.prototype.any = function (listener, context) {
     if (this.isResolved() || this.isRejected()) {
         invokeListener(this, listener, context);
     } else {
-        var onAny = function () {
+        const onAny = function () {
             this.off(this.isResolved() ? STATE_REJECTED : STATE_RESOLVED, onAny);
 
             invokeListener(this, listener, context);
@@ -845,7 +844,7 @@ Response.prototype.notify = function (object) {
             throw new Error('Can\'t notify itself');
         }
 
-        var onProgress = Response.isResponse(object) ? object.progress : object.notify;
+        const onProgress = Response.isResponse(object) ? object.progress : object.notify;
 
         this.then(object.resolve, object.reject, onProgress, object);
     }
@@ -909,7 +908,7 @@ Response.prototype.fork = function () {
  */
 Response.prototype.map = function (listener, context) {
     this.onResolve(function () {
-        var result = this.invoke(listener, this.stateData, context);
+        const result = this.invoke(listener, this.stateData, context);
 
         if (this.isResolved()) {
             this.resolve(result);
@@ -955,11 +954,11 @@ Response.prototype.getResult = function (key) {
         return getResponseResults(this.stateData[0]);
     }
 
-    var _key;
-    var keys = isArray(key) ? key : this.keys;
-    var length = this.stateData.length;
-    var index = 0;
-    var result = {};
+    let _key;
+    const keys = isArray(key) ? key : this.keys;
+    const length = this.stateData.length;
+    let index = 0;
+    const result = {};
 
     while (index < length) {
         _key = keys[index];
@@ -1278,9 +1277,9 @@ function iterate(queue) {
  * @returns {Boolean}
  */
 function checkFunction(queue, item) {
-    var next = queue.items.shift();
-    var results;
-    var context;
+    let next = queue.items.shift();
+    let results;
+    let context;
 
     if (isFunction(next)) {
         results = Response.isResponse(item) ? item.stateData : toArray(item);
@@ -1448,8 +1447,8 @@ function changeState(object, state, data) {
  * @param {State} item
  */
 function destroy(item) {
-    var keys = getKeys(item);
-    var index = keys.length;
+    const keys = getKeys(item);
+    let index = keys.length;
 
     while (index) {
         item[keys[--index]] = undefined;
@@ -1461,8 +1460,8 @@ function destroy(item) {
  * @param {Array} items
  */
 function destroyItems(items) {
-    var index = items.length;
-    var item;
+    let index = items.length;
+    let item;
 
     while (index) {
         item = items[--index];
@@ -1589,9 +1588,9 @@ function then(object, resolve, reject, progress, context) {
  * @param {Object} to
  */
 function copy(from, to) {
-    var properties = Object.keys(from);
-    var index = 0;
-    var name;
+    const properties = Object.keys(from);
+    let index = 0;
+    let name;
 
     while (name = properties[index++]) {
         to[name] = from[name];
@@ -1611,7 +1610,7 @@ function getResponseResults(item) {
 function inherits(superConst, constructor) {
     Prototype.prototype = superConst.prototype;
 
-    var proto = new Prototype();
+    const proto = new Prototype();
 
     if (constructor) {
         copy(constructor.prototype, proto);

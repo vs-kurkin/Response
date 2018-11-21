@@ -3,13 +3,13 @@
 import EventEmitter from 'events';
 
 export type StateListener = (string => void) | EventEmitter;
-export type Listener = ((...args: mixed[]) => void) | EventEmitter;
+export type Listener = ((...args: any[]) => void) | EventEmitter;
 
-class State extends EventEmitter {
+
+declare class State<R> extends EventEmitter {
     static EVENT_CHANGE_STATE: 'changeState';
     static STATE_ERROR: 'error';
 
-    // TODO: предикаты для методов пока не поддерживаются.
     static isState(mixed): boolean; //%checks (it instanceof State);
     static create<C: Function>(C, copyStatic?: boolean): C;
     static invoke<A, R>(fn: (...args: A) => R, args: ?A, thisArg?: mixed): R;
@@ -38,9 +38,9 @@ class State extends EventEmitter {
     setKeys(keys?: string[]): this;
 }
 
-module.exports = class Response extends State {
+declare export default class Response<R> extends State<R> {
     // Т.к. часто используется без отдельного импорта.
-    static State: Class<State>;
+    static State: Class<State<R>>;
     static Queue: Class<Queue>;
 
     static STATE_PENDING: 'pending';
@@ -49,12 +49,12 @@ module.exports = class Response extends State {
     static EVENT_PROGRESS: 'progress';
 
     static isResponse(mixed): boolean; //%checks (it instanceof Response);
-    static resolve(mixed): Response;
-    static reject(mixed): Response;
+    static resolve(R: mixed): Response<R>;
+    static reject(R: mixed): Response<R>;
 
     isResponse: true;
 
-    constructor(parent?: Response): void;
+    constructor(parent?: Response<mixed> | Promise<mixed>): void;
 
     pending(): this;
     resolve(mixed): this;
@@ -70,16 +70,16 @@ module.exports = class Response extends State {
     onResolve(Listener, thisArg?: mixed): this;
     onReject(Listener, thisArg?: mixed): this;
     onProgress(Listener, thisArg?: mixed): this;
-    notify(Response): this;
-    listen(Response): this;
+    notify(Response<mixed>): this;
+    listen(Response<mixed>): this;
     done(): this;
-    fork(): Response;
+    fork(): Response<mixed>;
     map(Listener, thisArg?: mixed): this;
     getResult(mixed): mixed;
     getReason(): mixed;
 }
 
-class Queue extends Response {
+declare class Queue extends Response<mixed> {
     static EVENT_START: 'start';
     static EVENT_STOP: 'stop';
     static EVENT_NEXT_ITEM: 'nextItem';
@@ -94,11 +94,11 @@ class Queue extends Response {
     isStrict: boolean;
     context: mixed;
 
-    constructor(items: ?mixed[], start?: boolean): void;
+    constructor(items: ?Queue[] | Promise<mixed>[] | Function[] | mixed[], start?: boolean): void;
 
     start(args?: mixed[]): this;
     stop(): this;
-    push(item: Response | Function, name: string): this;
+    push(item: Response<mixed> | Function, name: string): this;
     strict(flag?: boolean): this;
     onStart(Listener, thisArg?: mixed): this;
     onStop(Listener, thisArg?: mixed): this;
