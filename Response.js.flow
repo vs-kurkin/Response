@@ -6,7 +6,7 @@ export type StateListener = (string => void) | EventEmitter;
 export type Listener = ((...args: any[]) => void) | EventEmitter;
 
 
-declare class State<R> extends EventEmitter {
+declare export class State<R> extends EventEmitter {
     static EVENT_CHANGE_STATE: 'changeState';
     static STATE_ERROR: 'error';
 
@@ -16,8 +16,8 @@ declare class State<R> extends EventEmitter {
 
     isState: true;
     state: ?string;
-    data: mixed;
-    keys: ?string[];
+    data: {[string]: mixed};
+    keys: string[];
     stateData: mixed[];
 
     constructor(state: ?string): void;
@@ -75,11 +75,11 @@ declare export default class Response<R> extends State<R> {
     done(): this;
     fork(): Response<mixed>;
     map(Listener, thisArg?: mixed): this;
-    getResult(mixed): mixed;
+    getResult(string): mixed;
     getReason(): mixed;
 }
 
-declare class Queue extends Response<mixed> {
+declare export class Queue extends Response<mixed> {
     static EVENT_START: 'start';
     static EVENT_STOP: 'stop';
     static EVENT_NEXT_ITEM: 'nextItem';
