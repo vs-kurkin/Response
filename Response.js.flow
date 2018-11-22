@@ -92,7 +92,7 @@ declare export class Queue extends Response<mixed> {
     item: mixed;
     isStarted: boolean;
     isStrict: boolean;
-    context: mixed;
+    context: any;
 
     constructor(items: ?Queue[] | Promise<mixed>[] | Function[] | mixed[], start?: boolean): void;
 
