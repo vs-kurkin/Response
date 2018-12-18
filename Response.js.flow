@@ -2,8 +2,8 @@
 
 import EventEmitter from 'events';
 
-export type StateListener = (string => void) | EventEmitter;
-export type Listener = ((...args: any[]) => void) | EventEmitter;
+export type StateListener = (string => any) | EventEmitter;
+export type Listener = ((...args: any[]) => any) | EventEmitter;
 
 
 declare export class State<R> extends EventEmitter {

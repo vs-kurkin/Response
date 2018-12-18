@@ -1,7 +1,7 @@
 {
     "name": "Response",
     "author": "Vladislav Kurkin <b-vladi@yandex-team.ru>",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "main": "Response.js",
     "license": "MIT",
     "repository": {
