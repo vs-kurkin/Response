@@ -1,5 +1,3 @@
-// @flow
-
 import EventEmitter from 'events';
 
 export type StateListener = (string => any) | EventEmitter;
@@ -11,7 +9,7 @@ declare export class State<R> extends EventEmitter {
     static STATE_ERROR: 'error';
 
     static isState(mixed): boolean; //%checks (it instanceof State);
-    static create<C: Function>(C, copyStatic?: boolean): C;
+    static create(Class: Function, copyStatic?: boolean): Class<State<R>>;
     static invoke<A, R>(fn: (...args: A) => R, args: ?A, thisArg?: mixed): R;
 
     isState: true;
