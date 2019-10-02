@@ -10,29 +10,29 @@ declare export class State<R> extends EventEmitter {
     static EVENT_CHANGE_STATE: 'changeState';
     static STATE_ERROR: 'error';
 
-    static isState(mixed): boolean; //%checks (it instanceof State);
+    static isState(any): boolean; //%checks (it instanceof State);
     static create(Class: Function, copyStatic?: boolean): Class<State<R>>;
-    static invoke<A, R>(fn: (...args: A) => R, args: ?A, thisArg?: mixed): R;
+    static invoke<A, R>(fn: (...args: A) => R, args: ?A, thisArg?: any): R;
 
     isState: true;
     state: ?string;
-    data: {[string]: mixed};
+    data: {[string]: any};
     keys: string[];
-    stateData: mixed[];
+    stateData: any[];
 
     constructor(state: ?string): void;
 
-    invoke<A, R>(fn: (...args: A) => R, args: ?A, thisArg?: mixed): R;
+    invoke<A, R>(fn: (...args: A) => R, args: ?A, thisArg?: any): R;
     destroy(recursive: ?boolean): this;
     is(state: string): boolean;
-    setState(state: string, data: mixed): this;
-    onState(state: string, listener: StateListener, thisArg?: mixed): this;
-    onceState(state: string, listener: StateListener, thisArg?: mixed): this;
-    onChangeState(listener: Listener, thisArg?: mixed): this;
+    setState(state: string, data: any): this;
+    onState(state: string, listener: StateListener, thisArg?: any): this;
+    onceState(state: string, listener: StateListener, thisArg?: any): this;
+    onChangeState(listener: Listener, thisArg?: any): this;
     offChangeState(listener: Listener): this;
-    setData(key: string, value: mixed): this;
-    getData(key?: string): mixed;
-    getStateData(key: string): mixed;
+    setData(key: string, value: any): this;
+    getData(key?: string): any;
+    getStateData(key: string): any;
     toObject(keys?: string[]): Object;
     toJSON(): Object;
     setKeys(keys?: string[]): this;
@@ -40,69 +40,69 @@ declare export class State<R> extends EventEmitter {
 
 declare export default class Response<R> extends State<R> {
     // Т.к. часто используется без отдельного импорта.
-    static State: Class<State<R>>;
-    static Queue: Class<Queue>;
+static State: Class<State<R>>;
+static Queue: Class<Queue>;
 
-    static STATE_PENDING: 'pending';
-    static STATE_RESOLVED: 'resolve';
-    static STATE_REJECTED: 'error';
-    static EVENT_PROGRESS: 'progress';
+static STATE_PENDING: 'pending';
+static STATE_RESOLVED: 'resolve';
+static STATE_REJECTED: 'error';
+static EVENT_PROGRESS: 'progress';
 
-    static isResponse(mixed): boolean; //%checks (it instanceof Response);
-    static resolve(R: mixed): Response<R>;
-    static reject(R: mixed): Response<R>;
+static isResponse(any): boolean; //%checks (it instanceof Response);
+static resolve(R: any): Response<R>;
+static reject(R: any): Response<R>;
 
-    isResponse: true;
+isResponse: true;
 
-    constructor(parent?: Response<mixed> | Promise<mixed>): void;
+constructor(parent?: Response<any> | Promise<any>): void;
 
-    pending(): this;
-    resolve(mixed): this;
-    reject(mixed): this;
-    progress(mixed): this;
-    isPending(): boolean;
-    isResolved(): boolean;
-    isRejected(): boolean;
+pending(): this;
+resolve(any): this;
+reject(any): this;
+progress(any): this;
+isPending(): boolean;
+isResolved(): boolean;
+isRejected(): boolean;
 
-    then(onResolve?: Listener, onReject?: Listener, onProgress?: Listener, thisArg?: mixed): this;
-    any(Listener, thisArg?: mixed): this;
-    onPending(Listener, thisArg?: mixed): this;
-    onResolve(Listener, thisArg?: mixed): this;
-    onReject(Listener, thisArg?: mixed): this;
-    onProgress(Listener, thisArg?: mixed): this;
-    notify(Response<mixed>): this;
-    listen(Response<mixed>): this;
-    done(): this;
-    fork(): Response<mixed>;
-    map(Listener, thisArg?: mixed): this;
-    getResult(string): mixed;
-    getReason(): mixed;
+then(onResolve?: Listener, onReject?: Listener, onProgress?: Listener, thisArg?: any): this;
+any(Listener, thisArg?: any): this;
+onPending(Listener, thisArg?: any): this;
+onResolve(Listener, thisArg?: any): this;
+onReject(Listener, thisArg?: any): this;
+onProgress(Listener, thisArg?: any): this;
+notify(Response<any>): this;
+listen(Response<any>): this;
+done(): this;
+fork(): Response<any>;
+map(Listener, thisArg?: any): this;
+getResult(string): any;
+getReason(): any;
 }
 
-declare export class Queue extends Response<mixed> {
+declare export class Queue extends Response<any> {
     static EVENT_START: 'start';
     static EVENT_STOP: 'stop';
     static EVENT_NEXT_ITEM: 'nextItem';
     static EVENT_ITEM_REJECTED: 'itemRejected';
 
-    static isQueue(mixed): boolean; //%checks (it instanceof Queue);
+    static isQueue(any): boolean; //%checks (it instanceof Queue);
 
     isQueue: true;
-    items: mixed[];
-    item: mixed;
+    items: any[];
+    item: any;
     isStarted: boolean;
     isStrict: boolean;
     context: any;
 
-    constructor(items: ?Queue[] | Promise<mixed>[] | Function[] | mixed[], start?: boolean): void;
+    constructor(items: ?Queue[] | Promise<any>[] | Function[] | any[], start?: boolean): void;
 
-    start(args?: mixed[]): this;
+    start(args?: any[]): this;
     stop(): this;
-    push(item: Response<mixed> | Function, name: string): this;
+    push(item: Response<any> | Function, name: string): this;
     strict(flag?: boolean): this;
-    onStart(Listener, thisArg?: mixed): this;
-    onStop(Listener, thisArg?: mixed): this;
-    onNextItem(Listener, thisArg?: mixed): this;
-    onItemRejected(Listener, thisArg?: mixed): this;
-    bind(thisArg?: mixed): this;
+    onStart(Listener, thisArg?: any): this;
+    onStop(Listener, thisArg?: any): this;
+    onNextItem(Listener, thisArg?: any): this;
+    onItemRejected(Listener, thisArg?: any): this;
+    bind(thisArg?: any): this;
 }
