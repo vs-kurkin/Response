@@ -1,3 +1,5 @@
+// @flow
+
 import EventEmitter from 'events';
 
 export type StateListener = (string => any) | EventEmitter;
